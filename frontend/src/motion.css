@@ -1,0 +1,122 @@
+/* NLMed Study: advanced animation layer. Loaded after index.css. Driven by <html data-motion="full|lite|off"> (see motion.jsx). */
+
+:root{--ease-out:cubic-bezier(.16,1,.3,1);--ease-spring:cubic-bezier(.34,1.56,.64,1)}
+.tabnum{font-variant-numeric:tabular-nums}
+
+/* ---------- page transition (replaces the plain fade) ---------- */
+@keyframes pageIn{from{opacity:0;transform:translateY(18px) scale(.995)}to{opacity:1;transform:none}}
+.page-enter{animation:pageIn .55s var(--ease-out) backwards}
+
+/* ---------- scroll reveals ---------- */
+.rv{opacity:0}
+.rv-on{animation:rv-up .9s var(--ease-out) var(--d,0ms) both}
+[data-rv=down].rv-on{animation-name:rv-down}
+[data-rv=left].rv-on{animation-name:rv-left}
+[data-rv=right].rv-on{animation-name:rv-right}
+[data-rv=zoom].rv-on{animation-name:rv-zoom}
+[data-rv=blur].rv-on{animation-name:rv-blur}
+[data-rv=flip].rv-on{animation-name:rv-flip}
+@keyframes rv-up{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:none}}
+@keyframes rv-down{from{opacity:0;transform:translateY(-28px)}to{opacity:1;transform:none}}
+@keyframes rv-left{from{opacity:0;transform:translateX(-36px)}to{opacity:1;transform:none}}
+@keyframes rv-right{from{opacity:0;transform:translateX(36px)}to{opacity:1;transform:none}}
+@keyframes rv-zoom{from{opacity:0;transform:scale(.86)}to{opacity:1;transform:none}}
+@keyframes rv-blur{from{opacity:0;filter:blur(14px);transform:translateY(10px)}to{opacity:1;filter:blur(0);transform:none}}
+@keyframes rv-flip{from{opacity:0;transform:perspective(800px) rotateX(-16deg) translateY(18px)}to{opacity:1;transform:none}}
+
+/* ---------- headline word reveal ---------- */
+.split-w{display:inline-block;overflow:hidden;vertical-align:bottom;padding-bottom:.12em;margin-bottom:-.12em}
+.split-w>span{display:inline-block;transform:translateY(112%)}
+.split-on .split-w>span{animation:splitUp .95s var(--ease-out) var(--d,0ms) both}
+@keyframes splitUp{from{transform:translateY(112%) rotate(4deg)}to{transform:none}}
+
+/* ---------- stagger helper (children rise one after another, up to 12) ---------- */
+.stagger>*{animation:rv-up .7s var(--ease-out) both}
+.stagger>*:nth-child(1){animation-delay:0ms}.stagger>*:nth-child(2){animation-delay:60ms}.stagger>*:nth-child(3){animation-delay:120ms}
+.stagger>*:nth-child(4){animation-delay:180ms}.stagger>*:nth-child(5){animation-delay:240ms}.stagger>*:nth-child(6){animation-delay:300ms}
+.stagger>*:nth-child(7){animation-delay:360ms}.stagger>*:nth-child(8){animation-delay:420ms}.stagger>*:nth-child(9){animation-delay:480ms}
+.stagger>*:nth-child(10){animation-delay:540ms}.stagger>*:nth-child(11){animation-delay:600ms}.stagger>*:nth-child(n+12){animation-delay:660ms}
+
+/* ---------- buttons: magnetic pull + ripple ---------- */
+.btn,.btn2{position:relative;overflow:hidden;translate:var(--tx,0) var(--ty,0);transition:translate .35s var(--ease-out),transform .25s var(--ease-out),box-shadow .3s ease,background-color .25s ease,border-color .25s ease,color .25s ease,filter .25s ease}
+.ripple{position:absolute;border-radius:50%;pointer-events:none;background:rgba(255,255,255,.45);transform:scale(0);animation:ripple .7s var(--ease-out) forwards}
+.btn2 .ripple{background:rgb(var(--accent)/.22)}
+@keyframes ripple{to{transform:scale(1);opacity:0}}
+
+/* ---------- cards: 3D tilt that follows the pointer ---------- */
+html[data-motion=full] .ccard,html[data-motion=full] [data-tilt]{transform-style:preserve-3d;will-change:transform}
+html[data-motion=full] .ccard:hover,html[data-motion=full] [data-tilt]:hover{transform:perspective(900px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) translateY(-6px)}
+html[data-motion=full] .ccard,html[data-motion=full] [data-tilt]{transition:transform .25s ease-out,box-shadow .3s}
+
+/* ---------- soft cursor glow + header shadow + background drift ---------- */
+.cursor-glow{position:fixed;left:0;top:0;width:320px;height:320px;border-radius:50%;pointer-events:none;z-index:1;opacity:.5;mix-blend-mode:multiply;background:radial-gradient(circle,rgb(var(--accent)/.14),transparent 65%);will-change:transform}
+.dark .cursor-glow{mix-blend-mode:screen;opacity:.7}
+html:not([data-motion=full]) .cursor-glow{display:none}
+header.sticky{transition:box-shadow .35s ease,background-color .35s ease}
+html[data-scrolled] header.sticky{box-shadow:0 12px 30px -18px rgb(15 23 42/.35)}
+html[data-motion=full] .aurora i.a1{translate:0 calc(var(--sy,0px)*-.07)}
+html[data-motion=full] .aurora i.a2{translate:0 calc(var(--sy,0px)*.05)}
+html[data-motion=full] .aurora i.a3{translate:0 calc(var(--sy,0px)*-.04)}
+
+/* ---------- headings & gradient text ---------- */
+html[data-motion=full] .gradient-text{background-size:220% 100%;animation:gradShift 7s ease-in-out infinite alternate}
+@keyframes gradShift{from{background-position:0% 50%}to{background-position:100% 50%}}
+
+/* ---------- tabs: sliding indicator (see Seg in ui.jsx) ---------- */
+.seg-ind{position:absolute;left:0;top:.25rem;bottom:.25rem;border-radius:.75rem;pointer-events:none;background:linear-gradient(90deg,rgb(var(--accent)),rgb(var(--accent2)));box-shadow:0 8px 18px -8px rgb(var(--accent)/.6);transition:transform .45s var(--ease-spring),width .45s var(--ease-spring)}
+
+/* ---------- logo ---------- */
+.logo-ecg{stroke-dasharray:100;animation:logoDraw 1.3s .25s cubic-bezier(.4,0,.2,1) backwards}
+a:hover .logo-ecg{animation:logoDraw2 .9s cubic-bezier(.4,0,.2,1)}
+@keyframes logoDraw{from{stroke-dashoffset:100}to{stroke-dashoffset:0}}
+@keyframes logoDraw2{from{stroke-dashoffset:100}to{stroke-dashoffset:0}}
+.brandmark{transition:transform .5s var(--ease-spring)}
+a:hover .brandmark{transform:rotate(-6deg) scale(1.08)}
+
+/* ---------- success mark (payment confirmed) ---------- */
+.succ{position:relative;display:inline-grid;place-items:center}
+.succ i{position:absolute;inset:0;border-radius:50%;border:2px solid rgba(255,255,255,.7);opacity:0;animation:halo 2.2s var(--ease-out) .5s infinite}
+.succ i:nth-child(2){animation-delay:1.2s}
+.succ .check{animation:popIn .6s var(--ease-spring) both}
+@keyframes halo{0%{transform:scale(.9);opacity:.8}100%{transform:scale(1.9);opacity:0}}
+@keyframes popIn{from{transform:scale(.4) rotate(-20deg);opacity:0}to{transform:none;opacity:1}}
+
+/* ---------- theme switch: circular reveal (View Transitions API) ---------- */
+::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}
+::view-transition-old(root){z-index:1}::view-transition-new(root){z-index:2}
+
+/* ---------- levels ---------- */
+/* lite: keep short fades, stop everything that loops, tilts or moves with the pointer */
+html[data-motion=lite] .rv-on{animation-name:rv-fade!important;animation-duration:.5s}
+@keyframes rv-fade{from{opacity:0}to{opacity:1}}
+html[data-motion=lite] .split-on .split-w>span{animation-name:rv-fade!important}
+html[data-motion=lite] .split-w>span{transform:none}
+html[data-motion=lite] .stagger>*{animation-name:rv-fade}
+html[data-motion=lite] .page-enter{animation-name:rv-fade;animation-duration:.3s}
+html[data-motion=lite] .aurora i,html[data-motion=lite] .ecgrow,html[data-motion=lite] .wave,html[data-motion=lite] .notebook,
+html[data-motion=lite] .succ i,html[data-motion=lite] .glow-ring,html[data-motion=lite] .float-a,html[data-motion=lite] .float-b{animation:none!important}
+/* off: nothing moves, everything is simply visible */
+html[data-motion=off] *,html[data-motion=off] *::before,html[data-motion=off] *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+html[data-motion=off] .rv{opacity:1}
+html[data-motion=off] .split-w>span{transform:none}
+html[data-motion=off] .logo-ecg,html[data-motion=off] .check path,html[data-motion=off] .check circle{stroke-dashoffset:0}
+html[data-motion=off] .scrollbar-top{display:none}
+@media (prefers-reduced-motion:reduce){.rv{opacity:1}.split-w>span{transform:none}.cursor-glow{display:none}}
+
+/* ---------- site polish (Full level; Lite keeps only the fades; Off shows everything still) ---------- */
+/* card light: a soft glow that follows the pointer across every card */
+html[data-motion=full] .box{position:relative}
+html[data-motion=full] .box::before{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;transition:opacity .35s ease;background:radial-gradient(360px circle at var(--mx,50%) var(--my,50%),rgb(var(--accent)/.13),transparent 62%)}
+html[data-motion=full] .box:hover::before{opacity:1}
+/* shimmer placeholders while content loads */
+.skel{background:linear-gradient(90deg,rgb(var(--accent)/.06) 25%,rgb(var(--accent)/.15) 37%,rgb(var(--accent)/.06) 63%);background-size:400% 100%;animation:shimmer 1.4s ease infinite;border-radius:14px}
+@keyframes shimmer{0%{background-position:100% 50%}100%{background-position:0 50%}}
+html[data-motion=off] .skel{animation:none}
+html[data-motion=lite] .skel{animation:none}
+/* inputs glow softly when focused */
+html[data-motion=full] .inp{transition:box-shadow .3s ease,border-color .3s ease}
+html[data-motion=full] .inp:focus{box-shadow:0 0 0 4px rgb(var(--accent)/.15)}
+/* navigation links get an underline that grows on hover */
+html[data-motion=full] .navlink{position:relative}
+html[data-motion=full] .navlink::after{content:'';position:absolute;left:12px;right:12px;bottom:4px;height:2px;border-radius:2px;background:rgb(var(--accent));transform:scaleX(0);transform-origin:left;transition:transform .35s var(--ease-out)}
+html[data-motion=full] .navlink:hover::after{transform:scaleX(1)}

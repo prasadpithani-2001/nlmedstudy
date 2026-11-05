@@ -1,0 +1,40 @@
+server:
+  error: {include-message: always}
+# H2 now saves to ./data (users, courses, file records survive restarts); uploaded files live in ./uploads
+spring:
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+  servlet: {multipart: {max-file-size: 600MB, max-request-size: 600MB}}
+  datasource: {url: "jdbc:h2:file:./data/studydesk;MODE=MySQL;AUTO_SERVER=TRUE", username: sa, password: ""}
+  jpa: {hibernate: {ddl-auto: update}}
+# Class recordings are stored under recordings.dir (env: RECORDINGS_DIR). quota-gb = total space the admin allows for recordings.
+recordings: {dir: uploads/recordings, quota-gb: 20}
+app:
+  base-url: http://localhost:8080
+  support-email: ${APP_SUPPORT_EMAIL:support@example.com}
+  staff-notify-email: ${APP_STAFF_NOTIFY_EMAIL:}   # real inbox for admin and teacher alerts (used when an account has a demo address)   # shown in the footer of every email          # used for links inside emails (set to your public https URL in production)
+  mail: {from: "NLMed Study <no-reply@nmedstudy.com>"}
+# SMS alerts to admins/teachers (payment approval requests). Default: printed to the console.
+sms:
+  provider: ${SMS_PROVIDER:none}          # none | twilio
+  twilio:
+    account-sid: ${TWILIO_ACCOUNT_SID:}
+    auth-token: ${TWILIO_AUTH_TOKEN:}
+    from: ${TWILIO_FROM:}
+# Emails: without SMTP settings they are printed in the server console (development). To send real email set, e.g.:
+#   SPRING_MAIL_HOST=smtp.gmail.com SPRING_MAIL_PORT=587 SPRING_MAIL_USERNAME=you@gmail.com SPRING_MAIL_PASSWORD=app-password
+#   SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH=true SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=true APP_BASE_URL=https://your-domain
+---
+# Run with: --spring.profiles.active=mysql
+spring:
+  config: {activate: {on-profile: mysql}}
+  datasource: {url: "jdbc:mysql://localhost:3306/studydesk?createDatabaseIfNotExist=true", username: root, password: change-me}
