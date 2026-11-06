@@ -51,7 +51,11 @@ import java.util.stream.Collectors;
   @PostMapping("/login") Map<String,Object> login(@RequestBody Map<String,String> b){
     User u=users.findByEmail(b.get("email")).filter(x->auth.enc.matches(b.get("password"),x.passwordHash))
       .orElseThrow(()->new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Email or password is incorrect")); return session(u); }
-  Map<String,Object> session(User u){ u.token=UUID.randomUUID().toString(); users.save(u); return Map.of("token",u.token,"role",u.role,"name",u.name,"id",u.id); }
+    Map<String,Object> session(User u){
+    u.token=UUID.randomUUID().toString(); users.save(u);
+    Map<String,Object> m=new LinkedHashMap<>();
+    m.put("token",u.token); m.put("role",u.role); m.put("name",u.name); m.put("id",u.id);
+    return m; }
 }
 
 @RestController @RequestMapping("/api") class StudyController {
@@ -60,18 +64,21 @@ import java.util.stream.Collectors;
   StudyController(Auth a,CourseRepo c,DemoRepo d,DemoRegRepo r,EnrollRepo e,DoubtRepo db,QuestionRepo q,AttemptRepo at,UserRepo u,Mailer m){
     auth=a;courses=c;demos=d;regs=r;enrolls=e;doubts=db;questions=q;attempts=at;users=u;mail=m;}
 
+  /** Map that accepts null values (Map.of does not, and would throw when a name or link is empty). */
+  static Map<String,Object> pack(Object... kv){ Map<String,Object> m=new LinkedHashMap<>(); for(int i=0;i+1<kv.length;i+=2) m.put((String)kv[i],kv[i+1]); return m; }
+
   // ---- public ----
   @GetMapping("/courses") List<Course> courses(){ return courses.findAll(); }
   @GetMapping("/demos") List<Map<String,Object>> demos(){
     List<Map<String,Object>> out=new ArrayList<>();
-    for(Demo d:demos.findAll()) out.add(Map.of("id",d.id,"title",d.title,"topic",d.topic,"startsAt",d.startsAt.toString(),
+    for(Demo d:demos.findAll()) out.add(pack("id",d.id,"title",d.title,"topic",d.topic,"startsAt",d.startsAt==null?null:d.startsAt.toString(),
       "seatsTaken",regs.countByDemoId(d.id),"maxSeats",d.maxSeats)); return out; }
   @PostMapping("/demos/{id}/register") Map<String,Object> reserve(@PathVariable Long id,@RequestBody Map<String,String> b){
     Demo d=demos.findById(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"Demo not found"));
     if(regs.countByDemoId(id)>=d.maxSeats) throw new ResponseStatusException(HttpStatus.CONFLICT,"This demo is full");
     DemoReg r=new DemoReg(); r.demoId=id; r.name=b.get("name"); r.email=b.get("email"); r.mobile=b.get("mobile"); r.education=b.get("education"); regs.save(r);
     Reminders.confirm(mail,d,r);   // booking confirmation now; reminder about an hour before the session (see Reminders)
-    return Map.of("message","Your free demo seat is reserved.","topic",d.topic,"startsAt",d.startsAt.toString(),"joinLink",d.meetingLink); }
+    return pack("message","Your free demo seat is reserved.","topic",d.topic,"startsAt",d.startsAt==null?null:d.startsAt.toString(),"joinLink",d.meetingLink); }
 
   // ---- student ----
   @PostMapping("/courses/{id}/enroll") Map<String,Object> enroll(@RequestHeader(value="Authorization",required=false) String h,@PathVariable Long id,@RequestBody Map<String,String> b){
@@ -88,7 +95,7 @@ import java.util.stream.Collectors;
   @GetMapping("/my/doubts") List<Doubt> myDoubts(@RequestHeader(value="Authorization",required=false) String h){ return doubts.findByUserId(auth.need(h,null).id); }
   @GetMapping("/assessments/{courseId}/questions") List<Map<String,Object>> qs(@PathVariable Long courseId){
     List<Map<String,Object>> out=new ArrayList<>();
-    for(Question q:questions.findByCourseId(courseId)) out.add(Map.of("id",q.id,"topic",q.topic,"text",q.text,"options",q.options.split("\\|"))); return out; }
+    for(Question q:questions.findByCourseId(courseId)) out.add(pack("id",q.id,"topic",q.topic,"text",q.text,"options",q.options.split("\\|"))); return out; }
   @PostMapping("/assessments/{courseId}/submit") Map<String,Object> submit(@RequestHeader(value="Authorization",required=false) String h,@PathVariable Long courseId,@RequestBody Map<String,Integer> answers){
     User u=auth.need(h,null); ProctorGuard.requireCamera("assess-"+courseId,u.id); int ok=0,bad=0,skip=0; Map<String,int[]> byTopic=new TreeMap<>();
     for(Question q:questions.findByCourseId(courseId)){ Integer a=answers.get(String.valueOf(q.id)); int[] t=byTopic.computeIfAbsent(q.topic,k->new int[2]); t[1]++;
@@ -114,6 +121,16 @@ import java.util.stream.Collectors;
     if(p==null||p<0||p>1_000_000) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Enter a price between 0 and 10,00,000");
     c.price=p;
     if(b.containsKey("listPrice")){ Integer lp=b.get("listPrice"); if(lp!=null&&(lp<0||lp>1_000_000)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Original price must be between 0 and 10,00,000"); c.listPrice=(lp==null||lp<=p)?null:lp; }
+    return courses.save(c); }
+  /** Edit an existing course's name, subject and instructor name. Missing or blank fields keep their current value. */
+  @PutMapping("/admin/courses/{id}/details") Course details(@RequestHeader(value="Authorization",required=false) String h,@PathVariable Long id,@RequestBody Map<String,String> b){
+    Course c=auth.managed(h,id,courses);
+    String name=b.get("name")==null||b.get("name").isBlank()?c.name:b.get("name").trim();
+    String subject=b.get("subject")==null||b.get("subject").isBlank()?c.subject:b.get("subject").trim();
+    String teacher=b.get("teacher")==null||b.get("teacher").isBlank()?c.teacher:b.get("teacher").trim();
+    if(name==null||name.isBlank()||subject==null||subject.isBlank()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Enter the course name and subject");
+    if(name.length()>120||subject.length()>60||(teacher!=null&&teacher.length()>120)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Name up to 120, subject up to 60 and instructor up to 120 characters");
+    c.name=name; c.subject=subject; c.teacher=teacher;
     return courses.save(c); }
   @PostMapping("/admin/demos") Demo newDemo(@RequestHeader(value="Authorization",required=false) String h,@RequestBody Map<String,String> b){
     auth.teach(h); Demo d=new Demo(); d.title=blankTo(b.get("title"),"FREE DEMO"); d.topic=b.get("topic"); d.meetingLink=b.get("meetingLink");

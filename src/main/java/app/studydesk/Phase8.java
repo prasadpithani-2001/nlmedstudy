@@ -57,14 +57,20 @@ import java.util.stream.Collectors;
 
   boolean configured() { return host != null && !host.isBlank() && sender.getIfAvailable() != null; }
 
-  String deliver(String to, String subject, String html, String text) { return deliverAs(to, subject, html, text, null, null); }
+  String deliver(String to, String subject, String html, String text) { return deliverAs(to, subject, html, text, null, null, false); }
 
   /** Sends now and returns the truth: null when the mail server accepted the email, otherwise the reason. Retries twice.
       fromName shows who the email is from (for example "Dr. Meera Rao via NLMed Study"); replyTo is where replies go.
-      The NL logo is embedded inside the email, so it shows even when the site is not on the public internet. */
-  String deliverAs(String to, String subject, String html, String text, String fromName, String replyTo) {
+      The NL logo is embedded inside the email, so it shows even when the site is not on the public internet.
+      sensitive = true for emails that carry a secret (password reset links, password-changed notices). Those are never
+      redirected to the staff notification address, and their content is never written to the server log. */
+  String deliverAs(String to, String subject, String html, String text, String fromName, String replyTo, boolean sensitive) {
     if (to == null || to.isBlank()) return "The email address is empty";
     if (isPlaceholder(to)) {
+      if (sensitive) {
+        String why = "The address " + to + " is a demo address. A password email was not sent.";
+        lastError = why; record(to, subject, "FAILED", why); log.warn(why); return why;
+      }
       if (staffNotify == null || staffNotify.isBlank()) {
         String why = "The address " + to + " is a demo address and cannot receive email. Change this account's email, or set APP_STAFF_NOTIFY_EMAIL.";
         lastError = why; record(to, subject, "FAILED", why); log.warn(why); return why;
@@ -73,7 +79,7 @@ import java.util.stream.Collectors;
     }
     if (!configured()) {
       String why = "Email is not set up on the server. Set SMTP_HOST, SMTP_USERNAME and SMTP_PASSWORD, then restart the server.";
-      log.warn("EMAIL NOT SENT to {}: {}\n{}", to, why, text);
+      log.warn("EMAIL NOT SENT to {}: {}{}", to, why, sensitive ? " (content hidden: sensitive email)" : "\n" + text);
       lastError = why; record(to, subject, "FAILED", why); return why;
     }
     JavaMailSender s = sender.getIfAvailable();
@@ -82,8 +88,8 @@ import java.util.stream.Collectors;
       try {
         MimeMessage m = s.createMimeMessage();
         MimeMessageHelper h = new MimeMessageHelper(m, true, "UTF-8");
-        jakarta.mail.internet.InternetAddress base = new jakarta.mail.internet.InternetAddress(from);
-        h.setFrom(fromName == null || fromName.isBlank() ? base : new jakarta.mail.internet.InternetAddress(base.getAddress(), fromName, "UTF-8"));
+        jakarta.mail.internet.InternetAddress fromAddr = new jakarta.mail.internet.InternetAddress(from);
+        h.setFrom(fromName == null || fromName.isBlank() ? fromAddr : new jakarta.mail.internet.InternetAddress(fromAddr.getAddress(), fromName, "UTF-8"));
         if (replyTo != null && !replyTo.isBlank()) h.setReplyTo(replyTo);
         h.setTo(to); h.setSubject(subject); h.setText(text, html);
         h.addInline("nlmed-logo", new org.springframework.core.io.ClassPathResource("static/email-logo.png"), "image/png");
@@ -114,9 +120,14 @@ import java.util.stream.Collectors;
   String url(String hashPath) { return (base.endsWith("/") ? base.substring(0, base.length() - 1) : base) + "/#" + hashPath; }
 
   /** Sends in a background thread so a slow mail server never slows the web request. */
-  void send(String to, String subject, String html, String text) {
+  void send(String to, String subject, String html, String text) { background(to, subject, html, text, false); }
+
+  /** Same as send, for emails that carry a secret (see deliverAs). */
+  void sendSensitive(String to, String subject, String html, String text) { background(to, subject, html, text, true); }
+
+  private void background(String to, String subject, String html, String text, boolean sensitive) {
     if (to == null || to.isBlank()) return;
-    Thread t = new Thread(() -> deliver(to, subject, html, text), "mailer");
+    Thread t = new Thread(() -> deliverAs(to, subject, html, text, null, null, sensitive), "mailer");
     t.setDaemon(true); t.start();
   }
 
@@ -191,11 +202,11 @@ import java.util.stream.Collectors;
       "<p>Hello " + esc(u.name) + ",</p><p>We received a request to reset your NLMed Study password. Please use the button below within " + minutes + " minutes. The link can be used only once.</p>"
         + "<p style=\"color:#64748b;font-size:13px\">If you did not make this request, please ignore this email. Your password will stay the same.</p>", "Reset Password", link);
     String text = "Hello " + u.name + ",\n\nwe received a request to reset your NLMed Study password. Please use the link below within " + minutes + " minutes (it can be used only once):\n" + link + "\n\nIf you did not make this request, please ignore this email.\n\nNLMed Study Team";
-    send(u.email, "Reset your NLMed Study password", html, text);
+    sendSensitive(u.email, "Reset your NLMed Study password", html, text);
   }
 
   void passwordChanged(User u) {
-    send(u.email, "Your NLMed Study password was changed",
+    sendSensitive(u.email, "Your NLMed Study password was changed",
       layout("Your password has been changed", "<p>Hello " + esc(u.name) + ", we are writing to let you know that your NLMed Study password has been changed.</p><p>If you made this change, there is nothing more you need to do.</p><p style=\"color:#64748b;font-size:13px\">If you did not make this change, please contact us straight away so we can help you secure your account.</p>", null, null),
       "Hello " + u.name + ",\n\nWe are writing to let you know that your NLMed Study password has been changed.\n\nIf you made this change, there is nothing more you need to do. If you did not, please contact us straight away so we can help you secure your account.\n\nWith warm regards,\nNLMed Study Team");
   }
@@ -220,7 +231,9 @@ interface ResetTokenRepo extends JpaRepository<ResetToken, Long> { Optional<Rese
   @PostMapping("/forgot") Map<String, Object> forgot(@RequestBody Map<String, String> b) {
     String email = ExtrasController.str(b, "email");
     if (!ExtrasController.EMAIL.matcher(email).matches()) throw ExtrasController.bad("Enter a valid email address");
-    long now = System.currentTimeMillis(); Long prev = last.put(email.toLowerCase(), now);
+    long now = System.currentTimeMillis();
+    if (last.size() > 1000) last.entrySet().removeIf(en -> now - en.getValue() > 10 * 60_000L);   // keep the rate-limit map small
+    Long prev = last.put(email.toLowerCase(), now);
     if (prev != null && now - prev < 60_000) throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Please wait a minute before asking for another link");
     Optional<User> u = users.findByEmail(email); if (u.isEmpty()) u = users.findByEmail(email.toLowerCase());
     if (u.isPresent()) {
@@ -299,7 +312,7 @@ interface ResetTokenRepo extends JpaRepository<ResetToken, Long> { Optional<Rese
   }
 
   @GetMapping("/public/reviews") List<Map<String, Object>> latestReviews() {
-    Map<Long, String> names = courses.findAll().stream().collect(Collectors.toMap(c -> c.id, c -> c.name));
+    Map<Long, String> names = new HashMap<>(); for (Course c : courses.findAll()) names.put(c.id, c.name);
     List<Review> l = new ArrayList<>(reviews.findAll()); l.sort((a, b) -> Long.compare(b.id, a.id)); List<Map<String, Object>> out = new ArrayList<>();
     for (Review r : l) { if (r.comment == null || r.comment.isBlank()) continue; if (out.size() >= 6) break;
       Map<String, Object> m = new LinkedHashMap<>(); m.put("id", r.id); m.put("name", r.userName); m.put("rating", r.rating); m.put("comment", r.comment); m.put("course", names.get(r.courseId)); out.add(m); }
@@ -362,13 +375,15 @@ interface ResetTokenRepo extends JpaRepository<ResetToken, Long> { Optional<Rese
     for (Payment p : ps) {
       if ("PENDING_VERIFICATION".equals(p.status)) pending++;
       if (!"SUCCESS".equals(p.status)) continue;
-      total += p.amount; LocalDate d = (p.reviewedAt != null ? p.reviewedAt : p.at).toLocalDate();
+      LocalDateTime when = p.reviewedAt != null ? p.reviewedAt : p.at;
+      if (when == null) continue;   // a payment with no date cannot be placed on the chart
+      total += p.amount; LocalDate d = when.toLocalDate();
       if (d.getYear() == today.getYear() && d.getMonth() == today.getMonth()) month += p.amount;
       if (byDay.containsKey(d)) byDay.merge(d, p.amount, Integer::sum);
       byCourse.computeIfAbsent(p.courseId, k -> new int[2])[0] += p.amount;
     }
     for (Enrollment e : en) byCourse.computeIfAbsent(e.courseId, k -> new int[2])[1]++;
-    Map<Long, String> names = all.stream().collect(Collectors.toMap(c -> c.id, c -> c.name));
+    Map<Long, String> names = new HashMap<>(); for (Course c : all) names.put(c.id, c.name);
     List<Map<String, Object>> days = new ArrayList<>(), per = new ArrayList<>();
     byDay.forEach((d, v) -> { Map<String, Object> m = new LinkedHashMap<>(); m.put("date", d.toString()); m.put("amount", v); days.add(m); });
     byCourse.forEach((id, v) -> { if (!mineIds.contains(id)) return; Map<String, Object> m = new LinkedHashMap<>(); m.put("course", names.get(id)); m.put("amount", v[0]); m.put("students", v[1]); per.add(m); });

@@ -29,15 +29,35 @@ const intOk=s=>s!==''&&Number.isInteger(Number(s))&&Number(s)>=0
 
 function CourseRow({c,run}){
   const orig=[String(c.price),c.listPrice?String(c.listPrice):''],[price,setPrice]=useState(orig[0]),[list,setList]=useState(orig[1])
+  const [editing,setEditing]=useState(false),[name,setName]=useState(c.name),[subject,setSubject]=useState(c.subject),[teacher,setTeacher]=useState(c.teacher||'')
   const dirty=price!==orig[0]||list!==orig[1],valid=intOk(price)&&(list===''||intOk(list)),[g,e]=theme(c.subject)
   const pct=valid&&list!==''&&Number(list)>Number(price)?Math.round((Number(list)-Number(price))*100/Number(list)):0
+  const detailsOk=name.trim().length>=2&&name.trim().length<=120&&subject.trim().length>0&&subject.trim().length<=60&&teacher.trim().length<=120
+  const detailsDirty=name!==c.name||subject!==c.subject||teacher!==(c.teacher||'')
+  const startEdit=()=>{setName(c.name);setSubject(c.subject);setTeacher(c.teacher||'');setEditing(true)}
+  const cancelEdit=()=>setEditing(false)
+  const saveDetails=()=>run(()=>api.put(`/admin/courses/${c.id}/details`,{name:name.trim(),subject:subject.trim(),teacher:teacher.trim()}),'Course details saved. Students see it right away.')
+  const remove=()=>{if(!window.confirm(`Delete "${c.name}"? This cannot be undone.`))return;run(()=>api.delete(`/admin/courses/${c.id}`),'Course deleted.')}
   return <tr className="border-t border-slate-200/60 align-middle">
-    <td className="py-3 pr-3"><div className="flex items-center gap-3"><span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${g} text-xl`} aria-hidden="true">{e}</span><div><b className="block text-navy">{c.name}</b><span className="text-xs opacity-60">{c.subject}</span></div></div></td>
+    <td className="py-3 pr-3">{editing?<div className="grid max-w-[300px] gap-2">
+        <input aria-label="Course name" className="inp !min-h-[40px]" value={name} maxLength={120} onChange={ev=>setName(ev.target.value)}/>
+        <input aria-label="Subject" className="inp !min-h-[40px]" value={subject} maxLength={60} onChange={ev=>setSubject(ev.target.value)}/>
+        <input aria-label="Instructor name" className="inp !min-h-[40px]" value={teacher} maxLength={120} placeholder="Instructor name" onChange={ev=>setTeacher(ev.target.value)}/>
+      </div>
+      :<div className="flex items-center gap-3"><span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${g} text-xl`} aria-hidden="true">{e}</span><div><b className="block text-navy">{c.name}</b><span className="block text-xs opacity-60">{c.subject}{c.teacher?` · ${c.teacher}`:''}</span></div></div>}</td>
     <td className="pr-3"><input aria-label={`Price for ${c.name}`} className="inp !min-h-[40px] max-w-[130px]" inputMode="numeric" value={price} onChange={ev=>setPrice(ev.target.value.replace(/\D/g,''))}/></td>
     <td className="pr-3"><input aria-label={`Original price for ${c.name} (optional)`} className="inp !min-h-[40px] max-w-[130px]" inputMode="numeric" placeholder="optional" value={list} onChange={ev=>setList(ev.target.value.replace(/\D/g,''))}/>{pct>0&&<div className="mt-0.5 text-xs font-semibold text-teal">{pct}% off shown</div>}</td>
-    <td><button className="btn !min-h-[40px] !py-1.5" disabled={!dirty||!valid} onClick={()=>run(()=>api.put(`/admin/courses/${c.id}/price`,{price:Number(price),listPrice:list===''?null:Number(list)}),'Price saved. Students see it right away.')}>Save</button></td></tr>}
-
-
+    <td className="whitespace-nowrap">{editing
+      ?<div className="flex flex-wrap gap-1.5">
+         <button className="btn !min-h-[40px] !py-1.5" disabled={!detailsDirty||!detailsOk} onClick={saveDetails}>Save details</button>
+         <button className="btn2 !min-h-[40px] !py-1.5" onClick={cancelEdit}>Cancel</button>
+       </div>
+      :<div className="flex flex-wrap gap-1.5">
+         <button className="btn !min-h-[40px] !py-1.5" disabled={!dirty||!valid} onClick={()=>run(()=>api.put(`/admin/courses/${c.id}/price`,{price:Number(price),listPrice:list===''?null:Number(list)}),'Price saved. Students see it right away.')}>Save price</button>
+         <button className="btn2 !min-h-[40px] !py-1.5" onClick={startEdit}>Edit</button>
+         <button className="btn2 !min-h-[40px] !py-1.5 !text-rose-600" onClick={remove}>Delete</button>
+       </div>}</td>
+  </tr>}
 function LiveRow({c,admin}){const [st,setSt]=useState(null),[g,e]=theme(c.subject)
  useEffect(()=>{const f=()=>api.get(`/live/${c.id}`).then(r=>setSt(r.data)).catch(()=>{});f();const t=setInterval(f,10000);return()=>clearInterval(t)},[c.id])
  return <li className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200/70 px-3 py-3"><span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${g} text-xl`} aria-hidden="true">{e}</span>
@@ -105,7 +125,7 @@ export function Teacher(){
    {(tab==='courses'||tab==='coupons')&&<Seg value={tab} set={setTab} items={[['courses','Courses & prices'],['coupons','Coupons & exams']]}/>}
    {tab==='courses'&&<><section className="box overflow-x-auto"><h2 className="mb-1 text-xl text-navy">Courses & prices</h2><p className="mb-3 text-sm opacity-70">Set the selling price. Add an original price to show a struck-through discount on the course card.</p>
      {courses===null?<div className="skel h-32"/>:courses.length===0?<p className="py-6 text-center text-sm opacity-70">No courses yet. Create your first one below.</p>
-     :<table className="w-full min-w-[640px] text-left text-sm"><thead><tr className="text-xs uppercase tracking-wide opacity-60"><th className="pb-2">Course</th><th>Price ₹</th><th>Original price ₹</th><th/></tr></thead><tbody>{courses.map(c=><CourseRow key={`${c.id}-${c.price}-${c.listPrice}`} c={c} run={run}/>)}</tbody></table>}</section>
+     :<table className="w-full min-w-[640px] text-left text-sm"><thead><tr className="text-xs uppercase tracking-wide opacity-60"><th className="pb-2">Course</th><th>Price ₹</th><th>Original price ₹</th><th/></tr></thead><tbody>{courses.map(c=><CourseRow key={`${c.id}-${c.name}-${c.subject}-${c.teacher}-${c.price}-${c.listPrice}`} c={c} run={run}/>)}</tbody></table>}</section>
     <form className="box mt-4 grid gap-3 md:grid-cols-[1.4fr_1fr_140px_auto]" onSubmit={e=>{e.preventDefault();const f=form(e),el=e.target;run(async()=>{await api.post('/admin/courses',f);el.reset()},'Course created. It is paid to your own payment account.')}}>
      <h2 className="text-xl text-navy md:col-span-4">Create a course</h2>
      <div><label htmlFor="cn1">Course name</label><input id="cn1" className="inp" name="name" required maxLength={120}/></div><div><label htmlFor="cs1">Subject</label><input id="cs1" className="inp" name="subject" required maxLength={60} placeholder="Anatomy"/></div>

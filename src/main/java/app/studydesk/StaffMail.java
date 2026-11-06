@@ -282,7 +282,7 @@ import java.util.regex.Pattern;
       if(times.size()>=MAX_PER_HOUR) throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,"You have sent "+MAX_PER_HOUR+" emails in the last hour. Please try again later.");
       times.add(System.currentTimeMillis());
     }
-    String err=mail.deliverAs(r.recipientEmail,r.subject,r.html,r.plain,nz(st.name)+" via NLMed Study",st.email);
+  String err=mail.deliverAs(r.recipientEmail,r.subject,r.html,r.plain,nz(st.name)+" via NLMed Study",st.email, false);
     try{
       String key=r.template.label, sender=nz(st.name), to=r.recipientEmail, subj=r.subject;
       logs.findFirstByToAddressIgnoreCaseAndSubjectOrderByIdDesc(to,subj).ifPresent(l->{ l.sender=sender; l.template=key; logs.save(l); });
