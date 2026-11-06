@@ -134,10 +134,10 @@ import java.util.stream.Collectors;
 @Configuration class Seed {
   @Bean CommandLineRunner run(UserRepo u,CourseRepo c,DemoRepo d,QuestionRepo q,Auth a,TopicRepo tp){ return x->{
     if(c.count()>0||u.findByEmail("teacher@studydesk.app").isPresent()) return;   // seed once only (safe with a persistent MySQL database)
-    User t=new User(); t.name="Dr. Meera Rao"; t.email="teacher@studydesk.app"; t.passwordHash=a.enc.encode("teacher123"); t.role="TEACHER"; u.save(t);
+    User t=new User(); t.name="Dr. Naga Lakshmi"; t.email="teacher@studydesk.app"; t.passwordHash=a.enc.encode("teacher123"); t.role="TEACHER"; u.save(t);
     String[][] cs={{"Complete Cardiology","Cardiology","24","18","12","4999"},{"Respiratory System Masterclass","Physiology","20","14","10","3999"},
       {"Clinical Anatomy","Anatomy","30","26","15","5499"},{"Pharmacology Essentials","Pharmacology","18","12","9","3499"},{"Pathology High-Yield Revision","Pathology","16","16","14","3999"}};
-    for(String[] r:cs){ Course k=new Course(); k.name=r[0]; k.subject=r[1]; k.teacher="Dr. Meera Rao"; k.liveClasses=Integer.parseInt(r[2]); k.notes=Integer.parseInt(r[3]); k.assessments=Integer.parseInt(r[4]); k.price=Integer.parseInt(r[5]); k.ownerId=t.id; k.listPrice=(int)(Math.round(k.price*1.3/100.0)*100); c.save(k); int pos=1; for(String tt:new String[]{"Introduction","Core Concepts","Clinical Cases","Revision"}){ Topic t1=new Topic(); t1.courseId=k.id; t1.title=tt; t1.position=pos++; tp.save(t1); } }
+    for(String[] r:cs){ Course k=new Course(); k.name=r[0]; k.subject=r[1]; k.teacher="Dr. Naga Lakshmi"; k.liveClasses=Integer.parseInt(r[2]); k.notes=Integer.parseInt(r[3]); k.assessments=Integer.parseInt(r[4]); k.price=Integer.parseInt(r[5]); k.ownerId=t.id; k.listPrice=(int)(Math.round(k.price*1.3/100.0)*100); c.save(k); int pos=1; for(String tt:new String[]{"Introduction","Core Concepts","Clinical Cases","Revision"}){ Topic t1=new Topic(); t1.courseId=k.id; t1.title=tt; t1.position=pos++; tp.save(t1); } }
     Demo e=new Demo(); e.title="FREE DEMO"; e.topic="Cardiovascular System — Introduction"; e.startsAt=LocalDateTime.now().plusDays(3).withHour(19).withMinute(0); e.meetingLink="https://meet.example.com/cardio-intro"; d.save(e);
     Object[][] qs={{"Anatomy","Which artery supplies the SA node in most people?","Right coronary artery|Left anterior descending|Left circumflex|Posterior descending",0},
       {"Pathology","ST elevation in II, III and aVF suggests infarction of which wall?","Anterior|Inferior|Lateral|Posterior",1},
