@@ -4,7 +4,7 @@ import api,{msg,authUrl,livePrefs} from '../api'
 import {useAuth} from '../App'
 import {FilePreview,cat} from './Materials'
 import {ClassRecorder,recordingSupported} from '../recorder'
-import './live-theme.css'
+import '../live-theme.css'
 const ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'}]}
 const COLORS=['#1c2a6b','#111111','#c0392b','#0f766e','#d97706','#7c3aed','#ffffff']
 const BG={plain:{background:'#fffef6'},ruled:{background:'repeating-linear-gradient(transparent 0 39px,#cfe0ea 39px 40px) #fffef6'},
