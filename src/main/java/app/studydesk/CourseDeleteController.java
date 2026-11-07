@@ -30,4 +30,12 @@ import java.util.*;
     courses.delete(c);
     return Map.of("message","Course deleted.");
   }
+
+    /** Remove one student from one course. Teacher: only own courses. Admin: any course. Payment records are kept. */
+  @DeleteMapping("/admin/enrollments/{id}") Map<String,Object> unenroll(@RequestHeader(value="Authorization",required=false) String h,@PathVariable Long id){
+    Enrollment e=enrolls.findById(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"Enrollment not found"));
+    auth.managed(h,e.courseId,courses);   // throws 403 if this teacher does not own the course
+    enrolls.delete(e);
+    return Map.of("message","Student removed from this course.");
+  }
 }

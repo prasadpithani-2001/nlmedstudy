@@ -297,8 +297,15 @@ export function Live(){
  useEffect(()=>{ if(!host) send({type:'media',cam,mic}) },[cam,mic])
  const start=async()=>{setErr('');setWait(null);setWaitList([]);waitN.current=0;strokes.current.clear();order.current=[];setImgs([]);setMsgs([]);setShared([]);setUnread({chat:0,files:0});setT0(null)
   try{if(host){let s;try{s=await navigator.mediaDevices.getUserMedia({video:true,audio:true})}catch(e){s=await navigator.mediaDevices.getUserMedia({audio:true})}local.current=s;out.current=s;vid.current.srcObject=s}
-   const u=JSON.parse(localStorage.getItem('ms_user')),w=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws/live?room=${id}&token=${u.token}`)
-   ws.current=w;w.onopen=()=>{setPhase('live');if(host){w.send(JSON.stringify({type:'mode',mode}));if(bg!=='plain')w.send(JSON.stringify({type:'bg',bg}))}};w.onmessage=e=>onMsg(JSON.parse(e.data));w.onclose=()=>{if(recRef.current){note('Connection to the class was lost. The recording continues and is saved when you stop it.');return}setPhase('ended')}
+   const u=JSON.parse(localStorage.getItem('ms_user')),w=new WebSocket(`${(import.meta.env.VITE_WS_URL||((location.protocol==='https:'?'wss':'ws')+'://'+location.host)).replace(/\/$/,'')}/ws/live?room=${id}&token=${u.token}`)
+   let opened=false
+   ws.current=w
+   w.onopen=()=>{opened=true;setPhase('live');if(host){w.send(JSON.stringify({type:'mode',mode}));if(bg!=='plain')w.send(JSON.stringify({type:'bg',bg}))}}
+   w.onmessage=e=>onMsg(JSON.parse(e.data))
+   w.onclose=()=>{
+     if(recRef.current){note('Connection to the class was lost. The recording continues and is saved when you stop it.');return}
+     if(!opened){setErr('Could not reach the class server. If the site was idle, wait 30-60 seconds and press Join again.');return}
+     setPhase('ended')}
   }catch(e){setErr('Could not start. Allow camera and microphone access in your browser, then try again.')}}
  const stop=()=>{clearTimeout(upT.current);if(ws.current)ws.current.close();[local.current,shareS.current].forEach(s=>s&&s.getTracks().forEach(t=>t.stop()));Object.values(pcs.current).forEach(p=>p.close())}
  useEffect(()=>()=>{if(recRef.current)recRef.current.stop();stop()},[])
