@@ -202,7 +202,7 @@ export function Live(){
  const cv=useRef(null),ws=useRef(null),pcs=useRef({}),pend=useRef({}),roles=useRef({}),local=useRef(null),out=useRef(null),shareS=useRef(null),vid=useRef(null),remote=useRef(null),frame=useRef(null),stage=useRef(null),room=useRef(null),imgIn=useRef(null)
  const strokes=useRef(new Map()),order=useRef([]),cur=useRef(null),buf=useRef([]),last=useRef(0),drag=useRef(null),myId=useRef(''),hideT=useRef(null),over=useRef(false),toastT=useRef(null),flags=useRef({open:false,sec:'draw'}),waitN=useRef(0),upT=useRef(null)
  const [phase,setPhase]=useState('lobby'),[bg,setBg]=useState(prefs.bg),[tool,setTool]=useState('pen'),[color,setColor]=useState(COLORS[0]),[size,setSize]=useState(4)
- const [roster,setRoster]=useState([]),[allow,setAllow]=useState({mic:true,cam:true}),[notice,setNotice]=useState(''),[req,setReq]=useState(null),[hands,setHands]=useState([]),[myHand,setMyHand]=useState(false),[feeds,setFeeds]=useState({}),[media,setMedia]=useState({}),[camPos,setCamPos]=useState(loadCam),[mic,setMic]=useState(host),[cam,setCam]=useState(host),[peers,setPeers]=useState([]),[err,setErr]=useState(''),[tin,setTin]=useState(false),[sharing,setSh]=useState(false),[big,setBig]=useState(false),[mode,setMode]=useState('tablet'),[waitList,setWaitList]=useState([]),[wait,setWait]=useState(null),[tGone,setTGone]=useState(false),[endNote,setEndNote]=useState(''),[endRep,setEndRep]=useState(null)
+ const [roster,setRoster]=useState([]),[allow,setAllow]=useState({mic:true,cam:true}),[notice,setNotice]=useState(''),[req,setReq]=useState(null),[hands,setHands]=useState([]),[myHand,setMyHand]=useState(false),[feeds,setFeeds]=useState({}),[media,setMedia]=useState({}),[camPos,setCamPos]=useState(loadCam),[mic,setMic]=useState(host),[cam,setCam]=useState(host),[peers,setPeers]=useState([]),[err,setErr]=useState(''),[tin,setTin]=useState(false),[sharing,setSh]=useState(false),[big,setBig]=useState(false),[mode,setMode]=useState(prefs.mode==='board'?'board':'tablet'),[waitList,setWaitList]=useState([]),[wait,setWait]=useState(null),[tGone,setTGone]=useState(false),[endNote,setEndNote]=useState(''),[endRep,setEndRep]=useState(null)
  const [open,setOpen]=useState(false),[sec,setSec]=useState(host?'draw':'chat'),[rfs,setRfs]=useState(false),[pfs,setPfs]=useState(false),[ui,setUi]=useState(true),[autoHide,setAutoHide]=useState(true)
  const [imgs,setImgs]=useState([]),[sel,setSel]=useState(null),[busy,setBusy]=useState(false),[msgs,setMsgs]=useState([]),[unread,setUnread]=useState({chat:0,files:0}),[shared,setShared]=useState([]),[prev,setPrev]=useState(null),[toast,setToast]=useState(''),[t0,setT0]=useState(null),[now,setNow]=useState(Date.now())
  const fsOn=rfs||pfs,showUi=!autoHide||ui||open
@@ -268,7 +268,7 @@ export function Live(){
   case 'clear':strokes.current.clear();order.current=[];wipe();break
   case 'bg':setBg(m.bg);break
   case 'rec':if(!host){setRecOn(m.on?{on:true,paused:!!m.paused}:null);note(m.on?(m.paused?'Recording paused.':'🔴 Your teacher is recording this class.'):'Recording stopped.')}break
-  case 'mode':setMode('tablet');break
+  case 'mode':setMode(m.mode==='board'?'board':'tablet');break
   case 'img':{const n={iid:m.iid,url:m.url,x:m.x,y:m.y,w:m.w,ar:m.ar};setImgs(l=>l.some(i=>i.iid===n.iid)?l.map(i=>i.iid===n.iid?n:i):[...l,n]);break}
   case 'imgmove':setImgs(l=>l.map(i=>i.iid===m.iid?{...i,x:m.x??i.x,y:m.y??i.y,w:m.w??i.w}:i));break
   case 'imgdel':setImgs(l=>l.filter(i=>i.iid!==m.iid));setSel(s=>s===m.iid?null:s);break
@@ -375,7 +375,6 @@ export function Live(){
  const togglePanel=()=>{setOpen(o=>!o);if(sec==='chat'||sec==='files')setUnread(u=>({...u,[sec]:0}))}
  const openPanel=sx=>{setSec(sx);setOpen(true);if(sx==='chat'||sx==='files')setUnread(u=>({...u,[sx]:0}))}
  const downloadBlob=(b,n)=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=n;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000)}
- /* class recording (teacher): board, pictures, the teacher's video and the microphone are mixed into one WebM file and saved as a course recording */
  /* Class recording (teacher). The board, pictures, the teacher's camera and microphone are recorded in this browser and
     uploaded in numbered parts while the class runs. Students are told when recording starts; the recording stays private
     to this course until the teacher publishes it. */
@@ -415,7 +414,7 @@ export function Live(){
 
  if(phase==='lobby'||phase==='ended')return <div className="box mx-auto max-w-lg text-center"><p className="font-hand text-2xl text-teal">{host?'ready when you are':'your live classroom'}</p><h1 className="text-3xl text-navy">{phase==='ended'?'Class ended':host?'Start live class':'Join live class'}</h1>
   <p className="my-2">{phase==='ended'?(endNote||'The class has ended, or you need to enroll to join.'):host?'Your camera and microphone will be used. Students join from their dashboard, no Zoom or Meet needed.':'Your teacher lets you in from a waiting room. Video, voice and the whiteboard appear here once you are in.'}</p>
-  
+  {phase==='lobby'&&host&&<div className="mx-auto my-4 grid max-w-sm grid-cols-2 gap-2">{Object.entries(MODES).map(([k,md])=><button key={k} type="button" aria-pressed={mode===k} className={`btn2 ${mode===k?'bg-teal/20 !border-teal':''}`} onClick={()=>setMode(k)}>{md.icon} {md.label}</button>)}</div>}
   <p role="alert" className="text-amber-700">{err}</p>{phase==='lobby'&&<button className="btn" onClick={start}>{host?'🔴 Go live':'Join class'}</button>}<Link className="btn2 ml-2" to={host?'/teacher?tab=live':'/dashboard'}>{host?'Back':'Return to dashboard'}</Link>
   {host&&phase==='ended'&&<div className="mt-4 text-left">{endRep?<AttendanceTable rows={endRep}/>:<button type="button" className="btn2" onClick={async()=>{try{setEndRep((await api.get(`/staff/live/${id}/attendance`)).data)}catch(x){setErr(msg(x))}}}>View attendance</button>}</div>}
   <video ref={vid} className="hidden"/></div>
