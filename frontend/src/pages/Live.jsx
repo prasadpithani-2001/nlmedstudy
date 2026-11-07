@@ -43,11 +43,11 @@ function PeoplePane({roster,waitList,hands,allow,id,send}){
     {waitList.length>0&&<div className="grid gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-400/40 dark:bg-amber-400/10">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-semibold">Waiting to be let in: {waitList.length}</h3>
-        <button type="button" className={btn} onClick={()=>send({type:'admit_all'})}>Admit all</button>
+        <button type="button" className="rounded-full bg-emerald-600 px-3 py-1 text-xs font-bold text-white shadow hover:bg-emerald-700" onClick={()=>send({type:'admit_all'})}>Admit all</button>
       </div>
       <ul className="grid gap-2">{waitList.map(w=><li key={w.id} className="flex flex-wrap items-center gap-2">
         <b>{w.name}</b><span className="text-xs opacity-70">waiting {since(w.since)}</span>
-        <span className="ml-auto flex gap-1"><button type="button" className={btn} onClick={()=>send({type:'admit',to:w.id})}>Admit</button><button type="button" className={btn} onClick={()=>send({type:'deny',to:w.id})}>Deny</button></span>
+        <span className="ml-auto flex gap-1"><button type="button" className="rounded-full bg-emerald-600 px-3 py-1 text-xs font-bold text-white shadow hover:bg-emerald-700" onClick={()=>send({type:'admit',to:w.id})}>Admit</button><button type="button" className="rounded-full bg-rose-600 px-3 py-1 text-xs font-bold text-white shadow hover:bg-rose-700" onClick={()=>send({type:'deny',to:w.id})}>Deny</button></span>
       </li>)}</ul>
     </div>}
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -156,7 +156,7 @@ function CamHandle({pos,setPos,stageRef}){
   </div>
 }
 
-/* The teacher sees each student who has turned their camera on. When a camera is off, the student's initial is shown instead. */
+/* The teacher sees each student who has turned their camera on or mic on. When a camera is off, the student's initial is shown instead. */
 function StudentCams({feeds,peers,media}){
   const ids=Object.keys(feeds)
   if(ids.length===0) return null
@@ -167,7 +167,7 @@ function StudentCams({feeds,peers,media}){
 }
 function StudentCam({stream,name,on}){
   const v=useRef(null)
-  useEffect(()=>{ if(v.current) v.current.srcObject=stream },[stream])
+  useEffect(()=>{ if(v.current){ v.current.srcObject=stream; v.current.muted=false; v.current.play?.().catch(()=>{}) } },[stream])
   return <div className="relative h-20 w-28 overflow-hidden rounded-lg border border-white/40 bg-slate-800 shadow">
     <video ref={v} autoPlay playsInline className={`h-full w-full object-cover ${on?'':'invisible'}`} style={{transform:'scaleX(-1)'}}/>
     {!on&&<div className="absolute inset-0 grid place-items-center bg-slate-700 text-2xl font-bold text-white" aria-label="Camera off">{(name||'?').slice(0,1).toUpperCase()}</div>}
@@ -230,13 +230,15 @@ export function Live(){
  const makePc=pid=>{if(pcs.current[pid])pcs.current[pid].close();const pc=new RTCPeerConnection(ICE);pcs.current[pid]=pc;pc.onicecandidate=e=>{if(e.candidate)send({type:'ice',to:pid,cand:e.candidate})}
   // If the network path breaks, the teacher sends a fresh offer so the student can connect again.
   pc.oniceconnectionstatechange=()=>{if(pc.iceConnectionState==='failed'&&host&&!stoppedRef.current)call(pid)}
-  if(host)out.current.getTracks().forEach(t=>pc.addTrack(t,out.current));else pc.ontrack=e=>{remote.current=e.streams[0];if(vid.current)vid.current.srcObject=remote.current;setTin(true)};return pc}
+  if(host)out.current.getTracks().forEach(t=>pc.addTrack(t,out.current));else pc.ontrack=e=>{remote.current=e.streams[0];if(vid.current){vid.current.srcObject=remote.current;vid.current.play?.().catch(()=>{})}setTin(true)};return pc}
  const flushIce=pid=>{const pc=pcs.current[pid];(pend.current[pid]||[]).forEach(c=>pc.addIceCandidate(c).catch(()=>{}));pend.current[pid]=[]}
  const call=async pid=>{const pc=makePc(pid);await pc.setLocalDescription(await pc.createOffer());send({type:'offer',to:pid,sdp:pc.localDescription})}
+ // Student -> teacher camera/mic connection. If it fails (network change), it is rebuilt after a short pause.
  const callUp=async tid=>{ const key='up:'+tid; if(pcs.current[key]||!local.current) return
     const pc=new RTCPeerConnection(ICE); pcs.current[key]=pc
     local.current.getTracks().forEach(t=>pc.addTrack(t,local.current))
     pc.onicecandidate=e=>{if(e.candidate)send({type:'ice',to:tid,kind:'up',cand:e.candidate})}
+    pc.oniceconnectionstatechange=()=>{ if(pc.iceConnectionState==='failed'&&!stoppedRef.current&&pcs.current[key]===pc){ pc.close(); delete pcs.current[key]; setTimeout(()=>{ if(!stoppedRef.current&&roles.current[tid]==='TEACHER'&&local.current) callUp(tid) },1500) } }
     await pc.setLocalDescription(await pc.createOffer()); send({type:'offer',to:tid,kind:'up',sdp:pc.localDescription}) }
   // A student's camera or microphone is requested only when they press its button, and released when it is turned off.
   const refreshUp=()=>{ clearTimeout(upT.current); upT.current=setTimeout(()=>{ Object.keys(roles.current).forEach(pid=>{ if(roles.current[pid]!=='TEACHER'||!local.current) return; const k='up:'+pid; if(pcs.current[k]){ pcs.current[k].close(); delete pcs.current[k] } callUp(pid) }) },250) }
@@ -253,11 +255,13 @@ export function Live(){
   const release=kind=>{ if(!local.current) return; let changed=false
     local.current.getTracks().filter(t=>t.kind===kind).forEach(t=>{ t.stop(); local.current.removeTrack(t); changed=true })
     if(changed) refreshUp() }
-  // the teacher accepts a student's camera connection and shows the student's picture
+  // the teacher accepts a student's camera/mic connection and shows the student's picture
   const acceptUp=async m=>{ const key='up:'+m.from; if(pcs.current[key]) pcs.current[key].close()
     const pc=new RTCPeerConnection(ICE); pcs.current[key]=pc
     pc.onicecandidate=e=>{if(e.candidate)send({type:'ice',to:m.from,kind:'up',cand:e.candidate})}
     pc.ontrack=e=>{ const st=e.streams[0]||new MediaStream([e.track]); setFeeds(f=>({...f,[m.from]:st})) }
+    // when the student's connection dies, drop their tile so no black box stays on screen
+    pc.oniceconnectionstatechange=()=>{ if((pc.iceConnectionState==='failed'||pc.iceConnectionState==='closed')&&pcs.current[key]===pc){ setFeeds(f=>{const c={...f};delete c[m.from];return c}) } }
     await pc.setRemoteDescription(m.sdp)
     ;(pend.current[key]||[]).forEach(c=>pc.addIceCandidate(c).catch(()=>{})); pend.current[key]=[]
     await pc.setLocalDescription(await pc.createAnswer()); send({type:'answer',to:m.from,kind:'up',sdp:pc.localDescription}) }
@@ -323,7 +327,7 @@ export function Live(){
  const stop=()=>{stoppedRef.current=true;clearTimeout(upT.current);if(ws.current)ws.current.close();[local.current,shareS.current].forEach(s=>s&&s.getTracks().forEach(t=>t.stop()));Object.values(pcs.current).forEach(p=>p.close())}
  useEffect(()=>()=>{if(recRef.current)recRef.current.stop();stop()},[])
  useEffect(()=>{if(rec!=='recording'&&rec!=='paused'&&rec!=='saving')return;const h=e=>{e.preventDefault();e.returnValue=''};addEventListener('beforeunload',h);return()=>removeEventListener('beforeunload',h)},[rec])
- useEffect(()=>{if(phase!=='live'||!vid.current)return;const s=host?out.current:remote.current;if(s&&vid.current.srcObject!==s)vid.current.srcObject=s},[phase])
+ useEffect(()=>{if(phase!=='live'||!vid.current)return;const s=host?out.current:remote.current;if(s&&vid.current.srcObject!==s){vid.current.srcObject=s;vid.current.play?.().catch(()=>{})}},[phase])
  useEffect(()=>{if(phase!=='live')return;const t=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(t)},[phase])
 
  /* ---------- camera / mic / screen ---------- */
@@ -463,6 +467,11 @@ export function Live(){
    {host&&recActive&&ri&&(!ri.online||ri.attempt>0)&&<span className="rounded-full bg-slate-700 px-2.5 py-0.5 text-xs font-semibold">{!ri.online?'Offline · keeping the recording safe':`Reconnecting${ri.retryIn?` · retry in ${ri.retryIn}s`:'…'}`}</span>}
    {host&&rec==='saving'&&<span role="status" className="rounded-full bg-amber-500 px-2.5 py-0.5 text-xs font-bold">Saving recording{ri?.queued?` · ${ri.queued} part${ri.queued>1?'s':''} left`:''}</span>}
    <span className="flex-1"/>
+   {host&&<>
+    <button type="button" data-tb className={`cb ${tool==='eraser'?'!bg-teal/30':''}`} aria-pressed={tool==='eraser'} onClick={()=>setTool(tool==='eraser'?'pen':'eraser')} title="Eraser: drag over the board"><span aria-hidden="true">🧽</span><span className="hidden md:inline">{tool==='eraser'?'Erasing':'Erase'}</span></button>
+    <button type="button" data-tb className="cb" onClick={()=>act('undo')} title="Undo last stroke"><span aria-hidden="true">↶</span><span className="hidden md:inline">Undo</span></button>
+    <button type="button" data-tb className="cb" onClick={()=>act('clear')} title="Clear the board"><span aria-hidden="true">🗑</span><span className="hidden md:inline">Clear</span></button>
+   </>}
    <button type="button" data-tb className="cb" title="Change look" aria-label={`Change look, current ${ltheme}`} onClick={()=>{const n=ltheme==='studio'?'classic':ltheme==='classic'?'night':'studio';localStorage.setItem('ms_live_theme',n);setLtheme(n)}}><span aria-hidden="true">🎨</span><span className="hidden md:inline">{ltheme}</span></button>
    <>
     <button type="button" data-tb className={`cb ${mic?'':'cb-off'}`} onClick={()=>toggle('audio',mic,setMic)} aria-pressed={!mic} aria-label={mic?'Mute microphone':'Unmute microphone'} title="Microphone (M)"><span aria-hidden="true">{mic?'🎙️':'🔇'}</span><span className="hidden md:inline">{mic?'Mic':'Muted'}</span></button>
@@ -502,7 +511,6 @@ export function Live(){
      <Tile icon="📄" label="Files" on={sec==='files'} badge={unread.files} onClick={()=>openSec('files')}/><Tile icon="💬" label="Chat" on={sec==='chat'} badge={unread.chat} onClick={()=>openSec('chat')}/>
      <Tile icon="❓" label="Doubts" on={sec==='doubts'} onClick={()=>openSec('doubts')}/>{host&&<Tile icon="✋" label="Hands" badge={hands.length} on={sec==='hands'} onClick={()=>openSec('hands')}/>}{host&&<Tile icon="👥" label="People" badge={waitList.length} on={sec==='people'} onClick={()=>openSec('people')}/>}
      {host&&<Tile icon="⚙️" label="Settings" on={sec==='settings'} onClick={()=>openSec('settings')}/>}
-     
      <Tile icon={fsOn?'🗗':'⛶'} label={fsOn?'Exit full':'Full screen'} onClick={toggleFs}/></div>
     <div className="mt-3 min-h-0 flex-1 overflow-y-auto border-t border-white/10 pt-3">{secBody}</div></div>}
 
