@@ -4,6 +4,7 @@ import api,{msg,authUrl,livePrefs} from '../api'
 import {useAuth} from '../App'
 import {FilePreview,cat} from './Materials'
 import {ClassRecorder,recordingSupported} from '../recorder'
+import './live-theme.css'
 const ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'}]}
 const COLORS=['#1c2a6b','#111111','#c0392b','#0f766e','#d97706','#7c3aed','#ffffff']
 const BG={plain:{background:'#fffef6'},ruled:{background:'repeating-linear-gradient(transparent 0 39px,#cfe0ea 39px 40px) #fffef6'},
@@ -200,13 +201,14 @@ function UploadBox({courseId,onDone}){
 export function Live(){
  const {id}=useParams(),{user}=useAuth(),host=user.role==='TEACHER',prefs=livePrefs()
  const cv=useRef(null),ws=useRef(null),pcs=useRef({}),pend=useRef({}),roles=useRef({}),local=useRef(null),out=useRef(null),shareS=useRef(null),vid=useRef(null),remote=useRef(null),frame=useRef(null),stage=useRef(null),room=useRef(null),imgIn=useRef(null)
- const strokes=useRef(new Map()),order=useRef([]),cur=useRef(null),buf=useRef([]),last=useRef(0),drag=useRef(null),myId=useRef(''),hideT=useRef(null),over=useRef(false),toastT=useRef(null),flags=useRef({open:false,sec:'draw'}),waitN=useRef(0),upT=useRef(null)
+ const strokes=useRef(new Map()),order=useRef([]),cur=useRef(null),buf=useRef([]),last=useRef(0),drag=useRef(null),myId=useRef(''),hideT=useRef(null),over=useRef(false),toastT=useRef(null),flags=useRef({open:false,sec:'draw'}),waitN=useRef(0),upT=useRef(null),retry=useRef(0),stoppedRef=useRef(false)
  const [phase,setPhase]=useState('lobby'),[bg,setBg]=useState(prefs.bg),[tool,setTool]=useState('pen'),[color,setColor]=useState(COLORS[0]),[size,setSize]=useState(4)
  const [roster,setRoster]=useState([]),[allow,setAllow]=useState({mic:true,cam:true}),[notice,setNotice]=useState(''),[req,setReq]=useState(null),[hands,setHands]=useState([]),[myHand,setMyHand]=useState(false),[feeds,setFeeds]=useState({}),[media,setMedia]=useState({}),[camPos,setCamPos]=useState(loadCam),[mic,setMic]=useState(host),[cam,setCam]=useState(host),[peers,setPeers]=useState([]),[err,setErr]=useState(''),[tin,setTin]=useState(false),[sharing,setSh]=useState(false),[big,setBig]=useState(false),[mode,setMode]=useState(prefs.mode==='board'?'board':'tablet'),[waitList,setWaitList]=useState([]),[wait,setWait]=useState(null),[tGone,setTGone]=useState(false),[endNote,setEndNote]=useState(''),[endRep,setEndRep]=useState(null)
  const [open,setOpen]=useState(false),[sec,setSec]=useState(host?'draw':'chat'),[rfs,setRfs]=useState(false),[pfs,setPfs]=useState(false),[ui,setUi]=useState(true),[autoHide,setAutoHide]=useState(true)
  const [imgs,setImgs]=useState([]),[sel,setSel]=useState(null),[busy,setBusy]=useState(false),[msgs,setMsgs]=useState([]),[unread,setUnread]=useState({chat:0,files:0}),[shared,setShared]=useState([]),[prev,setPrev]=useState(null),[toast,setToast]=useState(''),[t0,setT0]=useState(null),[now,setNow]=useState(Date.now())
  const fsOn=rfs||pfs,showUi=!autoHide||ui||open
  flags.current={open,sec}
+ const [ltheme,setLtheme]=useState(()=>localStorage.getItem('ms_live_theme')||'studio')
  const [rec,setRec]=useState('idle'),[ri,setRi]=useState(null),[askRec,setAskRec]=useState(false),[consent,setConsent]=useState(false),[recTitle,setRecTitle]=useState(''),[recOn,setRecOn]=useState(null)
  const recRef=useRef(null),recBg=useRef('#fffef6'),recMode=useRef(mode)
  recBg.current=mode==='board'?'#0b1512':bg==='board'?'#17352f':'#fffef6'
@@ -225,7 +227,9 @@ export function Live(){
  const redraw=()=>{wipe();order.current.forEach(k=>draw(strokes.current.get(k),0))}
 
  /* ---------- WebRTC + messages from the server ---------- */
- const makePc=pid=>{const pc=new RTCPeerConnection(ICE);pcs.current[pid]=pc;pc.onicecandidate=e=>{if(e.candidate)send({type:'ice',to:pid,cand:e.candidate})}
+ const makePc=pid=>{if(pcs.current[pid])pcs.current[pid].close();const pc=new RTCPeerConnection(ICE);pcs.current[pid]=pc;pc.onicecandidate=e=>{if(e.candidate)send({type:'ice',to:pid,cand:e.candidate})}
+  // If the network path breaks, the teacher sends a fresh offer so the student can connect again.
+  pc.oniceconnectionstatechange=()=>{if(pc.iceConnectionState==='failed'&&host&&!stoppedRef.current)call(pid)}
   if(host)out.current.getTracks().forEach(t=>pc.addTrack(t,out.current));else pc.ontrack=e=>{remote.current=e.streams[0];if(vid.current)vid.current.srcObject=remote.current;setTin(true)};return pc}
  const flushIce=pid=>{const pc=pcs.current[pid];(pend.current[pid]||[]).forEach(c=>pc.addIceCandidate(c).catch(()=>{}));pend.current[pid]=[]}
  const call=async pid=>{const pc=makePc(pid);await pc.setLocalDescription(await pc.createOffer());send({type:'offer',to:pid,sdp:pc.localDescription})}
@@ -295,19 +299,28 @@ export function Live(){
   case 'ice':{const k=m.kind==='up'?'up:'+m.from:m.from;const pc=pcs.current[k];if(pc&&pc.remoteDescription)pc.addIceCandidate(m.cand).catch(()=>{});else(pend.current[k]=pend.current[k]||[]).push(m.cand);break}
   default:}}
  useEffect(()=>{ if(!host) send({type:'media',cam,mic}) },[cam,mic])
- const start=async()=>{setErr('');setWait(null);setWaitList([]);waitN.current=0;strokes.current.clear();order.current=[];setImgs([]);setMsgs([]);setShared([]);setUnread({chat:0,files:0});setT0(null)
-  try{if(host){let s;try{s=await navigator.mediaDevices.getUserMedia({video:true,audio:true})}catch(e){s=await navigator.mediaDevices.getUserMedia({audio:true})}local.current=s;out.current=s;vid.current.srcObject=s}
+
+ /* Start or reconnect. again=true is a silent reconnect: chat, board and files stay as they were. */
+ const start=async(again)=>{stoppedRef.current=false;setErr('')
+  if(!again){retry.current=0;setWait(null);setWaitList([]);waitN.current=0;strokes.current.clear();order.current=[];setImgs([]);setMsgs([]);setShared([]);setUnread({chat:0,files:0});setT0(null)}
+  try{if(host&&!local.current){let s;try{s=await navigator.mediaDevices.getUserMedia({video:true,audio:true})}catch(e){s=await navigator.mediaDevices.getUserMedia({audio:true})}local.current=s;out.current=s;vid.current.srcObject=s}
    const u=JSON.parse(localStorage.getItem('ms_user')),w=new WebSocket(`${(import.meta.env.VITE_WS_URL||((location.protocol==='https:'?'wss':'ws')+'://'+location.host)).replace(/\/$/,'')}/ws/live?room=${id}&token=${u.token}`)
    let opened=false
    ws.current=w
-   w.onopen=()=>{opened=true;setPhase('live');if(host){w.send(JSON.stringify({type:'mode',mode}));if(bg!=='plain')w.send(JSON.stringify({type:'bg',bg}))}}
+   w.onopen=()=>{opened=true;retry.current=0;setPhase('live');if(host){w.send(JSON.stringify({type:'mode',mode}));if(bg!=='plain')w.send(JSON.stringify({type:'bg',bg}))}}
    w.onmessage=e=>onMsg(JSON.parse(e.data))
    w.onclose=()=>{
+     if(stoppedRef.current)return                       // the class was ended on purpose: never reconnect
      if(recRef.current){note('Connection to the class was lost. The recording continues and is saved when you stop it.');return}
+     if(!host&&retry.current<8){                        // students retry with growing delays (covers Render waking up)
+       retry.current++
+       note('Connection lost. Reconnecting…')
+       setTimeout(()=>{if(!stoppedRef.current)start(true)},Math.min(1000*2**retry.current,15000))
+       return}
      if(!opened){setErr('Could not reach the class server. If the site was idle, wait 30-60 seconds and press Join again.');return}
      setPhase('ended')}
   }catch(e){setErr('Could not start. Allow camera and microphone access in your browser, then try again.')}}
- const stop=()=>{clearTimeout(upT.current);if(ws.current)ws.current.close();[local.current,shareS.current].forEach(s=>s&&s.getTracks().forEach(t=>t.stop()));Object.values(pcs.current).forEach(p=>p.close())}
+ const stop=()=>{stoppedRef.current=true;clearTimeout(upT.current);if(ws.current)ws.current.close();[local.current,shareS.current].forEach(s=>s&&s.getTracks().forEach(t=>t.stop()));Object.values(pcs.current).forEach(p=>p.close())}
  useEffect(()=>()=>{if(recRef.current)recRef.current.stop();stop()},[])
  useEffect(()=>{if(rec!=='recording'&&rec!=='paused'&&rec!=='saving')return;const h=e=>{e.preventDefault();e.returnValue=''};addEventListener('beforeunload',h);return()=>removeEventListener('beforeunload',h)},[rec])
  useEffect(()=>{if(phase!=='live'||!vid.current)return;const s=host?out.current:remote.current;if(s&&vid.current.srcObject!==s)vid.current.srcObject=s},[phase])
@@ -415,7 +428,7 @@ export function Live(){
  if(phase==='lobby'||phase==='ended')return <div className="box mx-auto max-w-lg text-center"><p className="font-hand text-2xl text-teal">{host?'ready when you are':'your live classroom'}</p><h1 className="text-3xl text-navy">{phase==='ended'?'Class ended':host?'Start live class':'Join live class'}</h1>
   <p className="my-2">{phase==='ended'?(endNote||'The class has ended, or you need to enroll to join.'):host?'Your camera and microphone will be used. Students join from their dashboard, no Zoom or Meet needed.':'Your teacher lets you in from a waiting room. Video, voice and the whiteboard appear here once you are in.'}</p>
   {phase==='lobby'&&host&&<div className="mx-auto my-4 grid max-w-sm grid-cols-2 gap-2">{Object.entries(MODES).map(([k,md])=><button key={k} type="button" aria-pressed={mode===k} className={`btn2 ${mode===k?'bg-teal/20 !border-teal':''}`} onClick={()=>setMode(k)}>{md.icon} {md.label}</button>)}</div>}
-  <p role="alert" className="text-amber-700">{err}</p>{phase==='lobby'&&<button className="btn" onClick={start}>{host?'🔴 Go live':'Join class'}</button>}<Link className="btn2 ml-2" to={host?'/teacher?tab=live':'/dashboard'}>{host?'Back':'Return to dashboard'}</Link>
+  <p role="alert" className="text-amber-700">{err}</p>{phase==='lobby'&&<button className="btn" onClick={()=>start()}>{host?'🔴 Go live':'Join class'}</button>}<Link className="btn2 ml-2" to={host?'/teacher?tab=live':'/dashboard'}>{host?'Back':'Return to dashboard'}</Link>
   {host&&phase==='ended'&&<div className="mt-4 text-left">{endRep?<AttendanceTable rows={endRep}/>:<button type="button" className="btn2" onClick={async()=>{try{setEndRep((await api.get(`/staff/live/${id}/attendance`)).data)}catch(x){setErr(msg(x))}}}>View attendance</button>}</div>}
   <video ref={vid} className="hidden"/></div>
 
@@ -440,7 +453,7 @@ export function Live(){
    <p className="text-xs opacity-70">Shortcuts: <span className="kbd">T</span> tools · <span className="kbd">F</span> full screen · <span className="kbd">Esc</span> exit full screen</p></div>}</>
 
  const recActive=rec==='recording'||rec==='paused'
- return <div ref={room} className={`cr ${fsOn?'cr-fs':''}`} data-ui={showUi?'on':'off'} onMouseMove={()=>autoHide&&poke()} onPointerDown={e=>autoHide&&e.pointerType!=='mouse'&&poke()} onTouchStart={()=>autoHide&&poke()} onKeyDown={()=>autoHide&&poke()}>
+ return <div ref={room} className={`cr lt-${ltheme} ${fsOn?'cr-fs':''}`} data-ui={showUi?'on':'off'} onMouseMove={()=>autoHide&&poke()} onPointerDown={e=>autoHide&&e.pointerType!=='mouse'&&poke()} onTouchStart={()=>autoHide&&poke()} onKeyDown={()=>autoHide&&poke()}>
   {!host&&recOn?.on&&<div role="status" className="rec-banner"><span className="animate-pulse text-red-500" aria-hidden="true">●</span><span>{recOn.paused?'Recording is paused.':'This class is being recorded.'} Recordings are shared only with students of this course.</span></div>}
   <div className="cr-top" role="toolbar" aria-label="Class controls" onKeyDown={toolKey} onMouseEnter={()=>{over.current=true}} onMouseLeave={()=>{over.current=false}} onFocusCapture={()=>{over.current=true}} onBlurCapture={()=>{over.current=false}}>
    <span className="animate-pulse rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold">● LIVE</span>
@@ -450,6 +463,7 @@ export function Live(){
    {host&&recActive&&ri&&(!ri.online||ri.attempt>0)&&<span className="rounded-full bg-slate-700 px-2.5 py-0.5 text-xs font-semibold">{!ri.online?'Offline · keeping the recording safe':`Reconnecting${ri.retryIn?` · retry in ${ri.retryIn}s`:'…'}`}</span>}
    {host&&rec==='saving'&&<span role="status" className="rounded-full bg-amber-500 px-2.5 py-0.5 text-xs font-bold">Saving recording{ri?.queued?` · ${ri.queued} part${ri.queued>1?'s':''} left`:''}</span>}
    <span className="flex-1"/>
+   <button type="button" data-tb className="cb" title="Change look" aria-label={`Change look, current ${ltheme}`} onClick={()=>{const n=ltheme==='studio'?'classic':ltheme==='classic'?'night':'studio';localStorage.setItem('ms_live_theme',n);setLtheme(n)}}><span aria-hidden="true">🎨</span><span className="hidden md:inline">{ltheme}</span></button>
    <>
     <button type="button" data-tb className={`cb ${mic?'':'cb-off'}`} onClick={()=>toggle('audio',mic,setMic)} aria-pressed={!mic} aria-label={mic?'Mute microphone':'Unmute microphone'} title="Microphone (M)"><span aria-hidden="true">{mic?'🎙️':'🔇'}</span><span className="hidden md:inline">{mic?'Mic':'Muted'}</span></button>
     <button type="button" data-tb className={`cb ${cam?'':'cb-off'}`} onClick={()=>toggle('video',cam,setCam)} aria-pressed={!cam} aria-label={cam?'Turn camera off':'Turn camera on'} title="Camera"><span aria-hidden="true">{cam?'🎥':'📷'}</span><span className="hidden md:inline">{cam?'Camera':'Cam off'}</span></button></>
