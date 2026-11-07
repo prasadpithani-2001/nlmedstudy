@@ -84,3 +84,26 @@
   .cb,.ltile,.cr-reveal{transition:none}
   .cb:hover,.ltile:hover{transform:none}
 }
+
+/* ===== Room colours win over the app's light/dark classes ===== */
+.lt-studio{--lt-on-accent:#0b1020}
+.lt-classic{--lt-on-accent:#ffffff}
+.lt-night{--lt-on-accent:#000000}
+.cr .text-navy,.cr h1,.cr h2,.cr h3{color:var(--lt-ink)!important}
+.cr .text-teal{color:var(--lt-accent)!important}
+.cr .text-slate-500,.cr .text-slate-400{color:var(--lt-muted)!important}
+.cr .text-stone-700{color:var(--lt-muted)!important}
+.cr .text-green-800{color:#86efac!important}
+.cr .text-amber-700{color:#fbbf24!important}
+.cr .btn{background:var(--lt-accent)!important;color:var(--lt-on-accent)!important;border:0!important;box-shadow:none!important}
+.cr .btn:hover:not(:disabled){filter:brightness(1.08)}
+.cr .btn2{background:var(--lt-btn)!important;color:var(--lt-ink)!important;border:1px solid var(--lt-line)!important}
+.cr .btn2:hover:not(:disabled){background:var(--lt-btn-hover)!important}
+.cr .inp,.cr input,.cr select,.cr textarea{background:var(--lt-btn)!important;color:var(--lt-ink)!important;border:1px solid var(--lt-line)!important}
+.cr ::placeholder{color:var(--lt-muted);opacity:1}
+.cr .box{background:var(--lt-panel)!important;color:var(--lt-ink)!important;border:1px solid var(--lt-line)!important}
+.cr .bg-amber-50{background:rgba(245,158,11,.14)!important}
+.cr .border-amber-300{border-color:rgba(245,158,11,.45)!important}
+.cr .bg-green-100{background:rgba(34,197,94,.18)!important}
+.cr .bg-stone-200{background:var(--lt-btn)!important}
+.cr .border-slate-200{border-color:var(--lt-line)!important}

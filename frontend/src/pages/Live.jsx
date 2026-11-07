@@ -425,12 +425,12 @@ export function Live(){
  const students=peers.filter(p=>p.role==='STUDENT').length+(host?0:1)
  const secs=t0?Math.max(0,Math.floor((now-t0)/1000)):null
 
- if(phase==='lobby'||phase==='ended')return <div className="box mx-auto max-w-lg text-center"><p className="font-hand text-2xl text-teal">{host?'ready when you are':'your live classroom'}</p><h1 className="text-3xl text-navy">{phase==='ended'?'Class ended':host?'Start live class':'Join live class'}</h1>
+ if(phase==='lobby'||phase==='ended')return <div className={`cr lt-${ltheme} mx-auto max-w-lg`}><div className="box text-center"><p className="font-hand text-2xl text-teal">{host?'ready when you are':'your live classroom'}</p><h1 className="text-3xl text-navy">{phase==='ended'?'Class ended':host?'Start live class':'Join live class'}</h1>
   <p className="my-2">{phase==='ended'?(endNote||'The class has ended, or you need to enroll to join.'):host?'Your camera and microphone will be used. Students join from their dashboard, no Zoom or Meet needed.':'Your teacher lets you in from a waiting room. Video, voice and the whiteboard appear here once you are in.'}</p>
   {phase==='lobby'&&host&&<div className="mx-auto my-4 grid max-w-sm grid-cols-2 gap-2">{Object.entries(MODES).map(([k,md])=><button key={k} type="button" aria-pressed={mode===k} className={`btn2 ${mode===k?'bg-teal/20 !border-teal':''}`} onClick={()=>setMode(k)}>{md.icon} {md.label}</button>)}</div>}
   <p role="alert" className="text-amber-700">{err}</p>{phase==='lobby'&&<button className="btn" onClick={()=>start()}>{host?'🔴 Go live':'Join class'}</button>}<Link className="btn2 ml-2" to={host?'/teacher?tab=live':'/dashboard'}>{host?'Back':'Return to dashboard'}</Link>
   {host&&phase==='ended'&&<div className="mt-4 text-left">{endRep?<AttendanceTable rows={endRep}/>:<button type="button" className="btn2" onClick={async()=>{try{setEndRep((await api.get(`/staff/live/${id}/attendance`)).data)}catch(x){setErr(msg(x))}}}>View attendance</button>}</div>}
-  <video ref={vid} className="hidden"/></div>
+  <video ref={vid} className="hidden"/></div></div>
 
  const boardish=mode==='board'||big,cvZ=boardish?3:2,imZ=boardish?2:1
  const secBody=<>
