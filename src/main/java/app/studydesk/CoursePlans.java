@@ -36,7 +36,9 @@ interface CoursePlanRepo extends JpaRepository<CoursePlan,Long>{ List<CoursePlan
   boolean canUseMaterial(Long userId,Long courseId,Long topicId){
     if(fullAccess(userId,courseId)) return true;
     CoursePlan p=activePlan(userId,courseId);
-    return p!=null&&topicId!=null&&CoursePlan.topicIdsOf(p).contains(topicId); }
+    if(p==null) return false;
+    /* General material (no topic) is open to every active plan; topic material needs its topic in the plan */
+    return topicId==null||CoursePlan.topicIdsOf(p).contains(topicId); }
 }
 
 @RestController @RequestMapping("/api") class CoursePlanController {

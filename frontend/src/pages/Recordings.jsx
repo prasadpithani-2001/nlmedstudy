@@ -304,7 +304,7 @@ export function RecordingsLibrary({ scope = 'teacher', courseId }) {
     {playing && <Dialog title={playing.title} wide onClose={() => setPlaying(null)}>
       <VideoPlayer id={playing.id} title={playing.title} hint={playing.durationSec} src={authUrl(playing.videoUrl)} poster={playing.hasThumb ? authUrl(playing.thumbUrl) : undefined}
         downloadHref={playing.canManage ? authUrl(playing.videoUrl + '?download=1') : undefined}
-        protect={!playing.canManage} watermark={`${me?.name || ''} · NLMed Study`} />
+        protect={!playing.canManage} />
       <p className="mt-2 break-words text-sm opacity-75">{playing.courseName} · {playing.teacherName} · {when(playing.createdAt)} · {clock(playing.durationSec)}</p>
     </Dialog>}
 

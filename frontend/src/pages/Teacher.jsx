@@ -14,15 +14,16 @@ import {ResourceLibrary} from './Materials'
 import {ThemeButton} from '../fx'
 import {BackBar,PageHeader,Seg} from '../ui'
 import {PlansPanel} from './Plans'
+import {FlashcardEditor,NotesEditor} from './StudyTools'
 
 /* Teacher / Admin workspace. Everything here is scoped by the server: a teacher sees only their own courses, students and doubts;
    the admin sees all. Tabs keep the page calm instead of one very long scroll. */
 /* Sidebar (desktop) / drawer (phones). kind 'tab' = section of this page, 'link' = another page. */
 const NAV=[
- ['Teach',[['overview','📊','Dashboard'],['courses','📚','Courses'],['students','👥','My Students'],['resources','🗂️','Resources'],['live','🔴','Live Sessions'],['recordings','🎬','Recordings'],['demos','🎥','Demo Sessions'],['plans','🧩','Course plans']]],
+ ['Teach',[['overview','📊','Dashboard'],['courses','📚','Courses'],['students','👥','My Students'],['resources','🗂️','Resources'],['flashcards','🃏','Flashcards'],['notes','📝','Notes'],['live','🔴','Live Sessions'],['recordings','🎬','Recordings'],['demos','🎥','Demo Sessions'],['plans','🧩','Course plans']]],
  ['Money',[['/payments','💳','Payment verification','link'],['/payments#settings','🏦','Payment Settings','link'],['/emails','✉️','Emails','link']]],
  ['Account',[['complaints','🚩','Reports'],['messages','💬','Messages'],['profile','👤','Profile'],['settings','⚙️','Settings']]]]
-const TITLES={overview:'Teacher Dashboard',courses:'Courses',coupons:'Coupons & exams',students:'My Students',resources:'Resources',live:'Live Sessions',recordings:'Recordings',demos:'Demo Sessions',plans:'Course plans',messages:'Messages',doubts:'Student doubts',complaints:'Reports & complaints',profile:'Profile',settings:'Settings'}
+const TITLES={overview:'Teacher Dashboard',courses:'Courses',coupons:'Coupons & exams',students:'My Students',resources:'Resources',flashcards:'Flashcards',notes:'Notes',live:'Live Sessions',recordings:'Recordings',demos:'Demo Sessions',plans:'Course plans',messages:'Messages',doubts:'Student doubts',complaints:'Reports & complaints',profile:'Profile',settings:'Settings'}
 const GROUP={coupons:'courses',doubts:'messages',complaints:'messages'}
 const csvCell=v=>{let s=String(v??'');if(/^[=+\-@]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"'}
 const intOk=s=>s!==''&&Number.isInteger(Number(s))&&Number(s)>=0
@@ -58,6 +59,7 @@ function CourseRow({c,run}){
          <button className="btn2 !min-h-[40px] !py-1.5 !text-rose-600" onClick={remove}>Delete</button>
        </div>}</td>
   </tr>}
+
 function LiveRow({c,admin}){const [st,setSt]=useState(null),[g,e]=theme(c.subject)
  useEffect(()=>{const f=()=>api.get(`/live/${c.id}`).then(r=>setSt(r.data)).catch(()=>{});f();const t=setInterval(f,10000);return()=>clearInterval(t)},[c.id])
  return <li className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200/70 px-3 py-3"><span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${g} text-xl`} aria-hidden="true">{e}</span>
@@ -86,13 +88,12 @@ function SettingsTab({flash}){const [p,setP]=useState(livePrefs),set=(k,v)=>{con
 export function Teacher(){
   const {user,setUser}=useAuth(),admin=user?.role==='ADMIN',go=useNavigate(),[sp,setSp]=useSearchParams(),[drawer,setDrawer]=useState(false)
   const tab=TITLES[sp.get('tab')]?sp.get('tab'):'overview',setTab=k=>{setSp({tab:k});setDrawer(false)}
-  const [stats,setStats]=useState(null),[courses,setCourses]=useState(null),[students,setStudents]=useState(null),[doubts,setDoubts]=useState(null),[demos,setDemos]=useState(null)
+  const [courses,setCourses]=useState(null),[students,setStudents]=useState(null),[doubts,setDoubts]=useState(null),[demos,setDemos]=useState(null)
   const [topics,setTopics]=useState([]),[cid,setCid]=useState(''),[note,setNote]=useState(''),[bad,setBad]=useState(false),[up,setUp]=useState(0),[q,setQ]=useState(''),[fc,setFc]=useState('')
   const flash=useCallback((m,isErr)=>{setNote(m);setBad(!!isErr);setTimeout(()=>setNote(''),isErr?7000:4000)},[])
   const logout=()=>{localStorage.removeItem('ms_user');setUser(null);go('/')}
   useEffect(()=>{if(!drawer)return;const k=e=>e.key==='Escape'&&setDrawer(false),o=document.body.style.overflow;document.body.style.overflow='hidden';addEventListener('keydown',k);return()=>{removeEventListener('keydown',k);document.body.style.overflow=o}},[drawer])
   const load=useCallback(()=>{
-    api.get('/admin/stats').then(r=>setStats(r.data)).catch(()=>setStats({}))
     api.get('/staff/courses').then(r=>{setCourses(r.data);setCid(p=>p||(r.data[0]?String(r.data[0].id):''))}).catch(e=>{setCourses([]);flash(msg(e),true)})
     api.get('/staff/students').then(r=>setStudents(r.data)).catch(()=>setStudents([]))
     api.get('/admin/doubts').then(r=>setDoubts(r.data)).catch(()=>setDoubts([]))
@@ -105,7 +106,6 @@ export function Teacher(){
   const exportCsv=()=>{const rows=[['Student','Email','Course','Enrolled on','Amount paid (INR)','Progress %'],...list.map(s=>[s.student,s.email,s.course,(s.since||'').slice(0,10),s.paid,s.percent])]
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([rows.map(r=>r.map(csvCell).join(',')).join('\n')],{type:'text/csv'}));a.download='students.csv';a.click();URL.revokeObjectURL(a.href)}
   const pendingDoubts=(doubts||[]).filter(d=>d.status==='PENDING').length
-  const Sel=<select className="inp" aria-label="Course" value={cid} onChange={e=>setCid(e.target.value)}>{(courses||[]).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
 
   const cur=GROUP[tab]||tab
   const Item=([k,i,l,kind])=>{const inner=<><span className="grid h-6 w-6 shrink-0 place-items-center text-lg" aria-hidden="true">{i}</span><span className="min-w-0 flex-1 truncate">{l}</span>{k==='messages'&&pendingDoubts>0&&<span className="rounded-full bg-amber-500 px-1.5 text-xs font-bold text-white">{pendingDoubts}</span>}</>
@@ -153,8 +153,11 @@ export function Teacher(){
      <select className="inp" name="topicId" aria-label="Topic" required defaultValue=""><option value="" disabled>{topics.length?'Select topic':'Add a topic first'}</option>{topics.map(t=><option key={t.id} value={t.id}>{t.title}</option>)}</select><input className="inp" name="title" placeholder="Video lesson title" aria-label="Video lesson title" required/><input className="inp md:col-span-2" name="file" type="file" aria-label="Video file" accept="video/mp4,video/webm,.mov,.m4v" required/><button className="btn">Upload video</button>
      {up>0&&up<100&&<div className="md:col-span-5"><div className="pbar"><i style={{width:up+'%'}}/></div><p className="mt-1 text-sm">Uploading… {up}%</p></div>}</form></>}</section>}
 
+   {tab==='flashcards'&&<FlashcardEditor courses={courses||[]} flash={flash}/>}
+   {tab==='notes'&&<NotesEditor courses={courses||[]} topics={topics} cid={cid} setCid={setCid} flash={flash}/>}
    {tab==='plans'&&<PlansPanel courses={courses||[]} flash={flash}/>}
-  {tab==='demos'&&<div className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
+
+   {tab==='demos'&&<div className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
     <form className="box grid content-start gap-3" onSubmit={e=>{e.preventDefault();const f=form(e),el=e.target;run(async()=>{await api.post('/admin/demos',f);el.reset()},'Demo session created. It is now visible on the Demo Sessions page.')}}><h2 className="text-xl text-navy">Schedule a free demo</h2>
      <div><label htmlFor="dt">Topic</label><input id="dt" className="inp" name="topic" required maxLength={150} placeholder="Cardiovascular System: Introduction"/></div>
      <div className="grid gap-3 sm:grid-cols-2"><div><label htmlFor="dd">Date & time</label><input id="dd" className="inp" name="startsAt" type="datetime-local" required/></div><div><label htmlFor="ds">Seats</label><input id="ds" className="inp" name="maxSeats" type="number" min="1" max="1000" defaultValue="50" required/></div></div>
@@ -162,10 +165,10 @@ export function Teacher(){
     <section className="box"><h2 className="mb-3 text-xl text-navy">Scheduled demos</h2>{demos===null?<div className="skel h-32"/>:demos.length===0?<p className="py-6 text-center text-sm opacity-70">No demo sessions yet.</p>:<ul className="grid gap-2">{[...demos].sort((a,b)=>new Date(a.startsAt)-new Date(b.startsAt)).map(d=>{const t=new Date(d.startsAt);return <li key={d.id} className="flex items-center gap-3 rounded-xl border border-slate-200/70 px-3 py-2.5"><div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-teal to-brand2 text-center text-white"><div><div className="font-extrabold leading-none">{t.getDate()}</div><div className="text-[10px] uppercase">{t.toLocaleString('en-IN',{month:'short'})}</div></div></div><div className="min-w-0 flex-1"><b className="block truncate text-navy">{d.topic}</b><span className="text-xs opacity-60">{t.toLocaleString('en-IN',{weekday:'short',hour:'2-digit',minute:'2-digit'})}</span></div><span className="chip">{d.seatsTaken}/{d.maxSeats} seats</span></li>})}</ul>}</section></div>}
 
    {(tab==='messages'||tab==='doubts'||tab==='complaints')&&<Seg value={tab} set={setTab} items={[['messages','Contact messages'],['doubts',`Student doubts${pendingDoubts?` (${pendingDoubts})`:''}`],['complaints','Reports & complaints']]}/>}
-  {tab==='complaints'&&<ReportsBoard scope="teacher"/>}
+   {tab==='complaints'&&<ReportsBoard scope="teacher"/>}
    {tab==='live'&&<section className="box"><h2 className="mb-1 text-xl text-navy">Live Sessions</h2><p className="mb-3 text-sm opacity-70">Teach in the browser with camera, whiteboard, pictures, files and chat. Students join from their dashboard.</p>{courses===null?<div className="skel h-24"/>:courses.length===0?<p className="py-6 text-center text-sm opacity-70">Create a course first.</p>:<ul className="grid gap-2">{courses.map(c=><LiveRow key={c.id} c={c} admin={admin}/>)}</ul>}</section>}
    {tab==='recordings'&&<section className="grid min-w-0 gap-4"><div><h2 className="text-2xl text-navy">Class recordings</h2><p className="text-sm opacity-75">Play, rename, publish or delete your recorded classes. Published recordings appear inside the course for enrolled students.</p></div><RecordingsLibrary scope={admin?'admin':'teacher'}/></section>}
-  {tab==='profile'&&<Profile flash={flash}/>}
+   {tab==='profile'&&<Profile flash={flash}/>}
    {tab==='settings'&&<SettingsTab flash={flash}/>}
    {tab==='doubts'&&<section className="box"><h2 className="mb-3 text-xl text-navy">Student doubts</h2>{doubts===null?<div className="skel h-32"/>:doubts.length===0?<p className="py-6 text-center text-sm opacity-70">No doubts yet. 🎉</p>
      :<ul className="grid gap-2">{[...doubts].sort((a,b)=>(b.status==='PENDING')-(a.status==='PENDING')||b.id-a.id).map(d=><li key={d.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/70 px-3 py-2.5"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><b className="text-navy">{d.userName||'Student'}</b><span className="chip">{d.category}</span><span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${d.status==='ANSWERED'?'tag-ok':d.status==='IMPORTANT'?'tag-bad':'tag-wait'}`}>{d.status.toLowerCase()}</span></div><p className="mt-1 text-[15px]">{d.text}</p></div>

@@ -6,9 +6,11 @@ import {useAuth} from '../App'
 export const inr=n=>'₹'+Number(n).toLocaleString('en-IN')
 export function useGet(url){const [d,setD]=useState(null);useEffect(()=>{let live=true;api.get(url).then(r=>live&&setD(r.data)).catch(()=>live&&setD([]));return()=>{live=false}},[url]);return d}
 
-/* every course gets a banner colour + icon from its subject (no image files needed) */
+/* every course gets a banner colour + icon from its subject, and a picture from /course-images */
 const THEME={Cardiology:['from-rose-500 to-orange-400','❤️'],Physiology:['from-sky-500 to-indigo-500','🫁'],Anatomy:['from-violet-500 to-fuchsia-500','🦴'],Pharmacology:['from-emerald-500 to-teal-500','💊'],Pathology:['from-amber-500 to-red-500','🔬']}
 export const theme=s=>THEME[s]||['from-indigo-500 to-violet-500','🎓']
+const IMG={Anatomy:'anatomy',Physiology:'physiology',Cardiology:'physiology',Pathology:'pathology',Pharmacology:'materia-medica','Materia Medica':'materia-medica',Organon:'organon','Homeopathic Pharmacy':'homeopathic-pharmacy'}
+export const courseImg=s=>`/course-images/${IMG[s]||'organon'}.png`
 export const Stars=({v,n})=>v==null?<span className="chip">New</span>:<span className="inline-flex items-center gap-1 text-sm"><b className="text-amber-500">★ {v.toFixed(1)}</b>{n!=null&&<span className="opacity-60">({n})</span>}</span>
 export const initials=n=>(n||'?').replace(/^(Dr\.?|Prof\.?)\s+/i,'').split(/\s+/).map(x=>x[0]).slice(0,2).join('').toUpperCase()
 export const Skeletons=({n=3,h='h-72'})=>[...Array(n)].map((_,i)=><div key={i} className={`skel ${h}`}/>)
@@ -20,18 +22,40 @@ export function useEnrolled(){const {user}=useAuth(),[s,setS]=useState(null)
  return s}
 
 export function CourseCard({c,i=0,enrolled}){const [g,e]=theme(c.subject),{user}=useAuth(),go=useNavigate(),staff=user&&user.role!=='STUDENT'
- return <article style={{animationDelay:i*80+'ms'}} className="ccard group flex min-w-0 animate-fadeUp flex-col">
-  <Link to={`/course/${c.id}`} aria-label={`View ${c.name}`} className={`relative block h-24 overflow-hidden bg-gradient-to-br sm:h-40 ${g}`}>
-   <span className="absolute -right-4 -top-4 h-20 w-20 rounded-full bg-white/15 sm:h-28 sm:w-28" aria-hidden="true"/><span className="absolute -bottom-8 left-6 h-16 w-16 rounded-full bg-white/10 sm:h-24 sm:w-24" aria-hidden="true"/>
-   <span className="absolute inset-0 grid place-items-center text-4xl drop-shadow-lg transition duration-500 group-hover:scale-110 sm:text-6xl" aria-hidden="true">{e}</span>
-   <span className="absolute left-2 top-2 max-w-[70%] truncate rounded-full bg-surface/90 px-2 py-0.5 text-[10px] font-bold text-slate-800 sm:left-3 sm:top-3 sm:px-3 sm:text-xs">{c.subject}</span>
-   {c.discountPct>0&&<span className="absolute right-2 top-2 rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white sm:right-3 sm:top-3 sm:px-2.5 sm:text-xs">{c.discountPct}% OFF</span>}</Link>
-  <div className="flex flex-1 flex-col p-2.5 sm:p-4"><h3 className="text-sm leading-snug text-navy sm:text-lg"><Link to={`/course/${c.id}`} className="hover:text-teal">{c.name}</Link></h3>
-   <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs opacity-80 sm:gap-2 sm:text-sm"><span className="avatar h-5 w-5 shrink-0 text-[9px] sm:h-6 sm:w-6 sm:text-[10px]" aria-hidden="true">{initials(c.teacher)}</span><span className="truncate">{c.teacher}</span></p>
-   <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:gap-x-3 sm:text-sm"><Stars v={c.rating} n={c.reviews}/><span className="opacity-70">👥 {Number(c.students).toLocaleString('en-IN')} enrolled</span></div>
-   <p className="mt-2 text-[11px] leading-snug opacity-70 sm:text-xs">{c.liveClasses} live classes · {c.notes} notes · {c.assessments} tests</p>
-   <div className="mt-auto flex flex-wrap items-end justify-between gap-2 pt-3 sm:pt-4"><div className="min-w-0"><span className="text-base font-extrabold text-navy sm:text-xl">{c.price>0?inr(c.price):'Free'}</span>{c.listPrice&&<span className="ml-1 text-xs text-slate-400 line-through sm:ml-2 sm:text-sm">{inr(c.listPrice)}</span>}</div>
-    {enrolled?<Link className="btn2 !min-h-[34px] !px-2.5 !py-1 text-xs sm:!min-h-[44px] sm:!px-4 sm:!py-1.5 sm:text-sm" to={`/learn/${c.id}`}>Start Learning</Link>:staff?<Link className="btn2 !min-h-[34px] !px-2.5 !py-1 text-xs sm:!min-h-[44px] sm:!px-4 sm:!py-1.5 sm:text-sm" to={`/course/${c.id}`}>View</Link>:<button className="btn !min-h-[34px] !px-2.5 !py-1 text-xs sm:!min-h-[44px] sm:!px-4 sm:!py-1.5 sm:text-sm" onClick={()=>go(user?`/checkout/${c.id}`:'/login')}>Enroll</button>}</div></div></article>}
+ const img=courseImg(c.subject),off=c.discountPct>0,free=!(c.price>0)
+ const cta=enrolled?<Link to={`/learn/${c.id}`} className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-emerald-500/30 transition hover:scale-105">▶ Continue</Link>
+  :staff?<Link to={`/course/${c.id}`} className="inline-flex items-center rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-navy transition hover:border-teal hover:text-teal">View</Link>
+  :<button type="button" onClick={()=>go(user?`/checkout/${c.id}`:'/login')} className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-rose-500 via-fuchsia-500 to-violet-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-fuchsia-500/30 transition hover:scale-105 hover:shadow-xl">Enroll now &rarr;</button>
+ return <article style={{animationDelay:i*80+'ms'}} className="group relative flex min-w-0 animate-fadeUp flex-col overflow-hidden rounded-3xl bg-white/80 shadow-xl ring-1 ring-slate-900/5 backdrop-blur-xl transition duration-500 hover:-translate-y-1.5 hover:shadow-2xl dark:bg-slate-900/70 dark:ring-white/10">
+  <span className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${g} opacity-0 blur-2xl transition duration-500 group-hover:opacity-25`} aria-hidden="true"/>
+  <Link to={`/course/${c.id}`} aria-label={`View ${c.name}`} className="shine group relative block h-44 overflow-hidden sm:h-52">
+   <span className={`absolute inset-0 bg-gradient-to-br ${g}`} aria-hidden="true"/>
+   <img src={img} alt="" aria-hidden="true" loading="lazy" className="absolute inset-0 h-full w-full scale-110 object-cover opacity-70 blur-2xl saturate-150"/>
+   <span className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/40" aria-hidden="true"/>
+   <span className="absolute inset-0 z-10 grid place-items-center p-4">
+    <img src={img} alt={c.subject} loading="lazy" decoding="async" className="h-full w-auto max-w-full object-contain drop-shadow-[0_18px_28px_rgba(0,0,0,0.45)] transition duration-700 group-hover:scale-105"/>
+   </span>
+   <span className="absolute left-2 top-2 z-30 inline-flex max-w-[70%] items-center gap-1 truncate rounded-full border border-white/60 bg-white/85 px-2 py-0.5 text-[10px] font-bold text-slate-800 shadow-md backdrop-blur-md sm:left-3 sm:top-3 sm:px-2.5 sm:text-[11px]">{e} {c.subject}</span>
+   {off&&<span className="absolute right-2 top-2 z-30 rounded-full bg-gradient-to-r from-rose-600 to-orange-500 px-2 py-0.5 text-[10px] font-extrabold text-white shadow-lg ring-2 ring-white/30 sm:right-3 sm:top-3 sm:px-2.5 sm:text-[11px]">{c.discountPct}% OFF</span>}
+  </Link>
+  <div className="flex flex-1 flex-col gap-3 p-3 sm:p-5">
+   <div>
+    <h3 className="line-clamp-2 text-sm font-bold leading-snug text-navy sm:text-lg"><Link to={`/course/${c.id}`} className="hover:text-teal">{c.name}</Link></h3>
+    <p className="mt-1.5 flex min-w-0 items-center gap-2 text-xs opacity-75 sm:text-sm"><span className="avatar h-5 w-5 shrink-0 text-[9px] sm:h-6 sm:w-6 sm:text-[10px]" aria-hidden="true">{initials(c.teacher)}</span><span className="truncate">{c.teacher}</span></p>
+   </div>
+   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm"><Stars v={c.rating} n={c.reviews}/><span className="opacity-70">👥 {Number(c.students).toLocaleString('en-IN')} enrolled</span></div>
+   <div className="flex flex-wrap gap-1.5 text-[10px] font-semibold sm:text-[11px]">
+    {[['🎥',c.liveClasses,'live'],['📝',c.notes,'notes'],['🧠',c.assessments,'tests']].map(([ic,n,l])=><span key={l} className="rounded-full bg-slate-100 px-2 py-1 text-slate-700 dark:bg-white/10 dark:text-slate-200">{ic} {n} {l}</span>)}
+   </div>
+   <div className="mt-auto flex flex-wrap items-end justify-between gap-2 border-t border-slate-200/70 pt-3">
+    <div className="min-w-0">
+     <div className="flex items-baseline gap-2"><span className="text-lg font-extrabold text-navy sm:text-2xl">{free?'Free':inr(c.price)}</span>{c.listPrice&&<span className="text-xs text-slate-400 line-through sm:text-sm">{inr(c.listPrice)}</span>}</div>
+     {off&&<p className="text-[11px] font-semibold text-emerald-600">You save {inr(c.listPrice-c.price)}</p>}
+    </div>
+    {cta}
+   </div>
+  </div>
+ </article>}
 
 export function DemoCard({d}){const [open,setOpen]=useState(false),[res,setRes]=useState(null),[err,setErr]=useState(''),[busy,setBusy]=useState(false),dt=new Date(d.startsAt),left=d.maxSeats-d.seatsTaken
  const submit=async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));setErr('');setBusy(true)
@@ -121,26 +145,69 @@ export function CourseDetail(){const {id}=useParams(),{user}=useAuth(),go=useNav
  const [g,e]=theme(c.subject),owned=en?.has(c.id),staff=user&&user.role!=='STUDENT'
  const incl=[['🎥',`${c.liveClasses} live classes`],['✍️',`${c.notes} handwritten notes`],['🧠',`${c.assessments} assessments`],['▶️',`${c.lessons} video lessons`],['❓','Doubt support'],['🎓','Certificate on completion']]
  return <>
-  <section className={`relative overflow-hidden rounded-3xl bg-gradient-to-br ${g} p-5 text-white shadow-xl sm:p-6 md:p-10`}><span className="absolute -right-10 -top-10 h-60 w-60 rounded-full bg-white/10" aria-hidden="true"/><span className="absolute bottom-0 right-10 text-[7rem] leading-none opacity-30 sm:text-[9rem]" aria-hidden="true">{e}</span>
-   <nav aria-label="Breadcrumb" className="text-sm text-white/80"><Link className="hover:underline" to="/courses">Courses</Link> / {c.subject}</nav>
-   <h1 className="relative mt-2 max-w-2xl text-2xl font-extrabold text-white sm:text-3xl md:text-5xl">{c.name}</h1>
-   <div className="relative mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs sm:gap-x-5 sm:text-sm"><span className="flex items-center gap-2"><span className="avatar h-7 w-7 border border-white/40 text-xs sm:h-8 sm:w-8" aria-hidden="true">{initials(c.teacher)}</span>{c.teacher}</span>
-    <span>{c.rating==null?'⭐ New course':`⭐ ${c.rating.toFixed(1)} (${c.reviews} reviews)`}</span><span>👥 {Number(c.students).toLocaleString('en-IN')} students</span><span>⏳ {c.liveClasses} live classes</span></div></section>
-  <div className="mt-5 grid gap-5 sm:mt-6 sm:gap-6 lg:grid-cols-[1fr_340px]">
-   <div className="grid min-w-0 content-start gap-5 sm:gap-6">
-    <section className="box"><h2 className="text-lg text-navy sm:text-xl">About this course</h2><p className="mt-2 text-sm opacity-80 sm:text-base">A structured {c.subject.toLowerCase()} course by {c.teacher}: live interactive classes, handwritten notes, curated resources and topic-wise tests that show your weak areas, with doubt support whenever you are stuck.</p>
-     <div className="mt-4 grid gap-2 sm:grid-cols-2">{incl.map(([i,t])=><div key={t} className="flex items-center gap-3 rounded-xl bg-teal/5 px-3 py-2 text-sm">
-      <span className="text-lg sm:text-xl" aria-hidden="true">{i}</span>{t}</div>)}</div></section>
-    <section className="box"><h2 className="text-lg text-navy sm:text-xl">Curriculum</h2>
-     {topics===null?<div className="skel mt-3 h-32"/>:(topics||[]).length===0?<p className="mt-2 text-sm opacity-70">Topics will appear once the teacher adds them.</p>:<ol className="mt-3 grid gap-2">{topics.map((t,i)=><li key={t.id} className="flex items-center gap-3 rounded-xl border border-slate-200/70 px-3 py-2.5"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-teal to-brand2 text-xs font-bold text-white sm:h-8 sm:w-8 sm:text-sm">{i+1}</span><span className="min-w-0 flex-1 text-sm font-medium sm:text-base">{t.title}</span><span className="shrink-0 text-xs opacity-60">{owned?'Unlocked':'🔒 Enroll'}</span></li>)}</ol>}</section>
-    <section className="box flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg text-navy sm:text-xl">Not sure yet?</h2><p className="text-sm opacity-75">Attend a free demo session and see how the class works.</p></div><Link className="btn2" to="/demos">🎥 Watch a free demo</Link></section>
+  <section className="relative isolate overflow-hidden rounded-[2rem] border border-white/10 bg-slate-950 text-white shadow-2xl">
+   <span className="pointer-events-none absolute inset-0 -z-10 bg-[linear-gradient(120deg,rgba(255,255,255,0.04)_0%,transparent_40%)]" aria-hidden="true"/>
+   <span className={`pointer-events-none absolute -right-20 top-1/2 -z-10 h-80 w-80 -translate-y-1/2 rounded-full bg-gradient-to-br ${g} opacity-30 blur-3xl`} aria-hidden="true"/>
+   <div className="relative grid items-center gap-8 p-6 sm:p-8 md:grid-cols-[1fr_minmax(0,300px)] md:gap-12 md:p-12 lg:grid-cols-[1fr_340px]">
+    <div className="min-w-0">
+     <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs text-white/60 sm:text-sm"><Link className="transition hover:text-white" to="/courses">Courses</Link><span aria-hidden="true">/</span><span>{c.subject}</span></nav>
+     <span className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 py-1 text-[11px] font-bold uppercase tracking-wider backdrop-blur sm:text-xs"><span aria-hidden="true">{e}</span>{c.subject}</span>
+     <h1 className="mt-4 bg-gradient-to-r from-white via-white to-white/70 bg-clip-text text-3xl font-extrabold leading-[1.1] text-transparent sm:text-5xl md:text-6xl">{c.name}</h1>
+     <div className="mt-5 flex items-center gap-3 text-sm text-white/85"><span className="avatar h-9 w-9 border border-white/30 text-xs" aria-hidden="true">{initials(c.teacher)}</span><span className="font-semibold">{c.teacher}</span></div>
+     <div className="mt-6 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+      {[[c.rating==null?'New':`★ ${c.rating.toFixed(1)}`,'Rating'],[Number(c.students).toLocaleString('en-IN'),'Students'],[c.liveClasses,'Live classes'],[c.notes,'Notes']].map(([v,l])=><div key={l} className="rounded-2xl border border-white/10 bg-white/[0.06] px-3.5 py-3 backdrop-blur">
+       <div className="text-lg font-extrabold leading-none">{v}</div><div className="mt-1 text-[11px] uppercase tracking-wider text-white/60">{l}</div></div>)}
+     </div>
+    </div>
+    <div className="relative mx-auto w-full max-w-[260px] md:mx-0 md:max-w-none">
+     <div className={`absolute -inset-4 rounded-[2.5rem] bg-gradient-to-br ${g} opacity-25 blur-2xl`} aria-hidden="true"/>
+     <div className="relative rounded-[1.75rem] border border-white/15 bg-white/[0.07] p-3 shadow-[0_30px_60px_-20px_rgba(0,0,0,0.6)] backdrop-blur-md transition duration-500 hover:-translate-y-1.5">
+      <img src={courseImg(c.subject)} alt={c.name} className="mx-auto h-auto max-h-80 w-auto max-w-full rounded-2xl object-contain"/>
+     </div>
+    </div>
+   </div>
+  </section>
+  <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
+   <div className="grid min-w-0 content-start gap-6">
+    <section className="rounded-3xl border border-slate-200/70 bg-white/80 p-5 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/60 sm:p-7">
+     <p className="text-xs font-bold uppercase tracking-wider text-teal">Course overview</p>
+     <h2 className="mt-1 text-xl font-extrabold text-navy sm:text-2xl">What you will get</h2>
+     <p className="mt-2 text-sm opacity-80 sm:text-base">A structured {c.subject.toLowerCase()} course by {c.teacher}: live interactive classes, handwritten notes, curated resources and topic-wise tests that show your weak areas, with doubt support whenever you are stuck.</p>
+     <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3">{incl.map(([i,t])=><div key={t} className="group flex flex-col items-start gap-3 rounded-2xl border border-slate-200/70 bg-gradient-to-br from-white to-slate-50 p-4 transition duration-300 hover:-translate-y-1 hover:shadow-xl dark:border-white/10 dark:from-slate-800/60 dark:to-slate-900/60">
+      <span className={`grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br ${g} text-lg text-white shadow-lg transition group-hover:scale-110`} aria-hidden="true">{i}</span>
+      <span className="text-sm font-semibold text-navy">{t}</span></div>)}</div>
+    </section>
+    <section className="rounded-3xl border border-slate-200/70 bg-white/80 p-5 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/60 sm:p-7">
+     <div className="flex flex-wrap items-end justify-between gap-2"><div><p className="text-xs font-bold uppercase tracking-wider text-teal">Syllabus</p><h2 className="mt-1 text-xl font-extrabold text-navy sm:text-2xl">Curriculum</h2></div>
+      {topics&&topics.length>0&&<span className="chip">{topics.length} topics</span>}</div>
+     {topics===null?<div className="skel mt-4 h-32"/>:(topics||[]).length===0?<p className="mt-3 text-sm opacity-70">Topics will appear once the teacher adds them.</p>:<ol className="mt-5 grid gap-3">{topics.map((t,i)=><li key={t.id} className="group flex items-center gap-4 rounded-2xl border border-slate-200/70 bg-white/60 px-4 py-3 transition duration-300 hover:border-teal/40 hover:shadow-md dark:border-white/10 dark:bg-white/[0.03]">
+      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${g} text-sm font-extrabold text-white shadow-lg`}>{String(i+1).padStart(2,'0')}</span>
+      <span className="min-w-0 flex-1 text-sm font-semibold text-navy sm:text-base">{t.title}</span>
+      <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${owned?'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300':'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300'}`}>{owned?'✓ Unlocked':'🔒 Locked'}</span></li>)}</ol>}
+    </section>
+    <section className="relative overflow-hidden rounded-3xl bg-slate-900 p-6 text-white shadow-xl sm:p-8">
+     <span className={`pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-gradient-to-br ${g} opacity-40 blur-3xl`} aria-hidden="true"/>
+     <div className="relative flex flex-wrap items-center justify-between gap-4">
+      <div><h2 className="text-xl font-extrabold sm:text-2xl">Not sure yet?</h2><p className="mt-1 text-sm text-white/75">Attend a free demo session and see how the class works.</p></div>
+      <Link className="inline-flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 font-bold text-slate-900 shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl" to="/demos">🎥 Watch a free demo</Link>
+     </div>
+    </section>
     <Reviews id={id}/></div>
-   <aside className="lg:sticky lg:top-24 lg:self-start"><div className="box grid gap-3 shadow-xl">
-    <div className="flex flex-wrap items-end gap-2"><span className="text-3xl font-extrabold text-navy sm:text-4xl">{c.price>0?inr(c.price):'Free'}</span>{c.listPrice&&<span className="mb-1 text-slate-400 line-through">{inr(c.listPrice)}</span>}{c.discountPct>0&&<span className="chip mb-1.5 !bg-rose-100 !text-rose-700">{c.discountPct}% off</span>}</div>
-    {owned?<Link className="btn !py-3" to={`/learn/${c.id}`}>▶ Start Learning</Link>:staff?<p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">You are signed in as {user.role.toLowerCase()}. Use a student account to enroll.</p>
-     :<button className="btn !py-3 text-base" onClick={()=>go(user?`/checkout/${c.id}`:'/login')}>{user?'Enroll Now':'Login to Enroll'}</button>}
-    <p className="text-center text-xs opacity-70">🔒 Secure payment · QR · UPI · Card · coupon codes accepted</p>
-    <ul className="grid gap-1.5 border-t border-slate-200/70 pt-3 text-sm">{incl.map(([i,t])=><li key={t}>{i} {t}</li>)}</ul></div></aside></div></>}
+   <aside className="lg:sticky lg:top-24 lg:self-start">
+    <div className="relative overflow-hidden rounded-3xl border border-slate-200/70 bg-white/85 p-6 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/75">
+     <span className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${g}`} aria-hidden="true"/>
+     <p className="text-xs font-bold uppercase tracking-wider text-teal">Enrol today</p>
+     <div className="mt-2 flex flex-wrap items-end gap-2"><span className="text-4xl font-extrabold text-navy">{c.price>0?inr(c.price):'Free'}</span>{c.listPrice&&<span className="mb-1 text-slate-400 line-through">{inr(c.listPrice)}</span>}{c.discountPct>0&&<span className="mb-1.5 rounded-full bg-rose-600 px-2.5 py-0.5 text-xs font-extrabold text-white">{c.discountPct}% OFF</span>}</div>
+     {c.discountPct>0&&<p className="mt-1 text-sm font-semibold text-emerald-600">You save {inr(c.listPrice-c.price)}</p>}
+     <div className="mt-5">
+      {owned?<Link className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 px-6 py-3.5 text-base font-bold text-white shadow-xl shadow-emerald-500/30 transition hover:scale-[1.02]" to={`/learn/${c.id}`}>▶ Start Learning</Link>
+      :staff?<p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">You are signed in as {user.role.toLowerCase()}. Use a student account to enroll.</p>
+      :<button type="button" className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-rose-500 via-fuchsia-500 to-violet-600 px-6 py-3.5 text-base font-bold text-white shadow-xl shadow-fuchsia-500/30 transition hover:scale-[1.02]" onClick={()=>go(user?`/checkout/${c.id}`:'/login')}>{user?'Enroll now →':'Login to enroll →'}</button>}
+     </div>
+     <p className="mt-3 text-center text-xs opacity-70">🔒 Secure payment · QR · UPI · Card · coupon codes accepted</p>
+     <ul className="mt-5 grid gap-2.5 border-t border-slate-200/70 pt-5 text-sm dark:border-white/10">{incl.map(([i,t])=><li key={t} className="flex items-center gap-3"><span className="grid h-6 w-6 place-items-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700" aria-hidden="true">✓</span><span>{i} {t}</span></li>)}</ul>
+    </div>
+   </aside></div></>}
 
 const AboutCard=({i,t,d})=><div className="box p-4 sm:p-5"><div className="text-2xl sm:text-3xl">{i}</div><h3 className="mt-2 text-base text-navy sm:text-lg">{t}</h3><p className="mt-1 text-sm opacity-75">{d}</p></div>
 export function About(){const st=useGet('/public/stats'),s=st&&!Array.isArray(st)?st:null

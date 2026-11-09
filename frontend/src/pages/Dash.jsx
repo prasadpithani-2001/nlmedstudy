@@ -7,7 +7,8 @@ import {inr,theme,Empty,Skeletons,initials} from './Public'
 import {methodName} from './Checkout'
 import {LiveBadge} from './Student'
 import {Count} from '../fx'
-import {BackBar} from '../ui'
+import {BackBar,Seg} from '../ui'
+import {StudentFlashcards,StudentNotes} from './StudyTools'
 import {Receipt,receiptFromPayment} from './Receipt'
 import {rd,LOG,streakOf} from '../focus'
 
@@ -28,6 +29,7 @@ import {MyPlans} from './MyPlans'
 import {ProofCell} from './ProofCell'
 export function StudentDashboard(){const {user}=useAuth(),[d,setD]=useState(null),[err,setErr]=useState('')
  useEffect(()=>{api.get('/my/dashboard').then(r=>setD(r.data)).catch(e=>{setErr(msg(e));setD({})})},[])
+ const [studyTab,setStudyTab]=useState('flash')
  const first=(user?.name||'').split(' ')[0]
  const courses=d?.courses||[],avg=courses.length?Math.round(courses.reduce((s,c)=>s+c.percent,0)/courses.length):0
  const cont=useMemo(()=>[...courses].sort((a,b)=>(a.percent>=100)-(b.percent>=100)||b.percent-a.percent)[0],[d])
@@ -45,6 +47,12 @@ export function StudentDashboard(){const {user}=useAuth(),[d,setD]=useState(null
    <div className="box flex flex-wrap items-center gap-5"><div className={`grid h-20 w-20 place-items-center rounded-2xl bg-gradient-to-br ${theme(cont.subject)[0]} text-4xl`} aria-hidden="true">{theme(cont.subject)[1]}</div>
     <div className="min-w-[220px] flex-1"><div className="text-sm opacity-70">{cont.subject} · {cont.teacher}</div><h3 className="text-xl text-navy">{cont.name}</h3><div className="mt-2 flex items-center gap-3"><div className="pbar flex-1"><i style={{width:cont.percent+'%'}}/></div><b className="text-sm">{cont.percent}%</b></div><div className="mt-1 text-xs opacity-60">{cont.done} of {cont.total} lessons completed</div></div>
     <div className="grid gap-2"><LiveBadge id={cont.courseId}/><Link className="btn" to={`/learn/${cont.courseId}`}>▶ {cont.percent>0?'Resume':'Start'} course</Link></div></div></section>}
+
+  <section className="mt-6" aria-label="Study tools">
+   <h2 className="mb-3 text-xl text-navy">Study Tools</h2>
+   <Seg value={studyTab} set={setStudyTab} items={[['flash','🃏 Flashcards'],['notes','📝 Notes']]}/>
+   <div className="mt-4">{studyTab==='flash'?<StudentFlashcards/>:<StudentNotes courses={d?.courses}/>}</div>
+  </section>
 
   <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_340px]">
    <div className="grid content-start gap-6">

@@ -15,6 +15,14 @@ const clock=s=>s==null?'--:--':(s>=3600?Math.floor(s/3600)+':':'')+String(Math.f
 const rid=()=>'i'+Date.now().toString(36)+Math.random().toString(36).slice(2,7)
 const fsEl=()=>document.fullscreenElement||document.webkitFullscreenElement
 
+/* One shared audio context for every speaking indicator (browsers limit how many can exist). */
+let sharedAc=null
+const audioCtx=()=>{ if(!sharedAc){ const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return null; sharedAc=new AC() } return sharedAc }
+/* Browsers block sound until a click. Call this from a button click: it starts every student's sound again. */
+const unlockSound=()=>{
+  document.querySelectorAll('video[data-remote]').forEach(v=>{ v.muted=false; const p=v.play?.(); p?.catch?.(()=>{}) })
+  audioCtx()?.resume?.().catch(()=>{}) }
+
 /* ---- small pieces of the Live Session Tools panel ---- */
 function Tile({icon,label,on,off,badge,onClick,disabled}){
  return <button type="button" className={`ltile ${off?'off':''}`} aria-pressed={on===undefined?undefined:!!on} disabled={disabled} onClick={onClick}><span className="text-2xl leading-none" aria-hidden="true">{icon}</span><span>{label}</span>{badge>0&&<span className="ltile-badge">{badge>9?'9+':badge}</span>}</button>}
@@ -85,6 +93,42 @@ function PeoplePane({roster,waitList,hands,allow,id,send}){
   </div>
 }
 
+/* Teacher: who is in the class right now, always visible beside the board (desktop). */
+function StudentDock({roster,hands,allow,send,waitList,collapsed,setCollapsed}){
+  const [,tick]=useState(0)
+  useEffect(()=>{const t=setInterval(()=>tick(x=>x+1),30000);return()=>clearInterval(t)},[])
+  const ini=n=>(n||'?').trim().split(/\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase()
+  const mins=t=>{ const m=Math.max(0,Math.round((Date.now()-t)/60000)); return m<1?'just joined':m<60?m+' min':Math.floor(m/60)+' h '+(m%60)+'m' }
+  return <aside aria-label="Students in this class" className={`student-dock ${collapsed?'is-collapsed':''}`}>
+    <div className="sd-head">
+      {!collapsed&&<div className="min-w-0"><p className="sd-kicker">👥 People · in class</p><h3 className="sd-title">{roster.length} student{roster.length===1?'':'s'}</h3></div>}
+      <div className="sd-actions">
+        {!collapsed&&<button type="button" className="sd-btn" onClick={unlockSound} title="Turn on students' sound (use if you cannot hear them)">🔊</button>}
+        {!collapsed&&<button type="button" className="sd-btn" onClick={()=>send({type:'mute_all'})} disabled={roster.length===0} title="Mute every student">🔇 Mute all</button>}
+        <button type="button" className="sd-btn sd-icon" onClick={()=>setCollapsed(c=>!c)} aria-expanded={!collapsed} aria-label={collapsed?'Show students':'Hide students'}>{collapsed?'👥':'›'}</button>
+      </div>
+    </div>
+    {!collapsed&&<>
+      {waitList.length>0&&<div className="sd-wait"><span>⏳ {waitList.length} waiting to join</span><button type="button" className="sd-btn sd-go" onClick={()=>send({type:'admit_all'})}>Admit all</button></div>}
+      {roster.length===0?<p className="sd-empty">No students yet. They appear here as soon as they join.</p>
+      :<ul className="sd-list">{roster.map(s=>{ const raised=hands.some(h=>h.id===s.id); return <li key={s.id} className="sd-row">
+        <span className="sd-av" aria-hidden="true">{ini(s.name)}</span>
+        <div className="sd-meta"><b>{s.name}</b><small>{mins(s.joinedAt)}</small></div>
+        <span className="sd-flags" aria-label="Status">
+          <span className={s.mic?'on':'off'} title={s.mic?'Microphone on':'Microphone off'}>{s.mic?'🎙️':'🔇'}</span>
+          <span className={s.cam?'on':'off'} title={s.cam?'Camera on':'Camera off'}>{s.cam?'🎥':'📷'}</span>
+          {raised&&<span className="hand" title="Hand raised">✋</span>}
+        </span>
+        <span className="sd-acts">
+          {s.mic?<button type="button" className="sd-mini" onClick={()=>send({type:'mute',to:s.id})} aria-label={`Mute ${s.name}`}>Mute</button>
+            :<button type="button" className="sd-mini" disabled={!allow.mic} onClick={()=>send({type:'request_unmute',to:s.id})} aria-label={`Ask ${s.name} to unmute`}>Unmute?</button>}
+          {s.cam?<button type="button" className="sd-mini" onClick={()=>send({type:'disable_cam',to:s.id})} aria-label={`Turn off ${s.name}'s camera`}>Cam off</button>
+            :<button type="button" className="sd-mini" disabled={!allow.cam} onClick={()=>send({type:'request_cam',to:s.id})} aria-label={`Ask ${s.name} to turn on camera`}>Cam on?</button>}
+        </span>
+      </li> })}</ul>}
+    </>}
+  </aside>
+}
 function HandsPane({hands,ack,lower}){
   return <div>
     <h3 className="mb-1 font-semibold">Raised hands</h3>
@@ -156,22 +200,86 @@ function CamHandle({pos,setPos,stageRef}){
   </div>
 }
 
-/* The teacher sees each student who has turned their camera on or mic on. When a camera is off, the student's initial is shown instead. */
-function StudentCams({feeds,peers,media}){
+/* Teacher: is a student speaking? Reads the level of the student's microphone (one shared audio context). */
+function useSpeaking(stream){
+  const [sp,setSp]=useState(false)
+  useEffect(()=>{
+    const at=stream?.getAudioTracks?.()[0]
+    const ctx=audioCtx()
+    if(!at||!ctx){ setSp(false); return }
+    let raf=0, alive=true, src=null, last=0, on=false
+    try{
+      ctx.resume?.().catch(()=>{})
+      const an=ctx.createAnalyser(); an.fftSize=512
+      src=ctx.createMediaStreamSource(new MediaStream([at])); src.connect(an)
+      const buf=new Uint8Array(an.fftSize)
+      const tick=()=>{ if(!alive) return
+        an.getByteTimeDomainData(buf); let s=0; for(const x of buf){ const d=(x-128)/128; s+=d*d }
+        const t=performance.now(); if(Math.sqrt(s/buf.length)>0.025) last=t
+        const talking=t-last<700; if(talking!==on){ on=talking; setSp(talking) }
+        raf=requestAnimationFrame(tick) }
+      tick()
+    }catch(e){ setSp(false) }
+    return()=>{ alive=false; cancelAnimationFrame(raf); try{ src?.disconnect() }catch(e){} }
+  },[stream])
+  return sp
+}
+function GalleryTile({s,stream,raised}){
+  const v=useRef(null), speaking=useSpeaking(stream), ini=(s.name||'?').trim().split(/\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase()
+  useEffect(()=>{ if(v.current&&stream){ v.current.srcObject=stream; v.current.muted=true; v.current.play?.().catch(()=>{}) } },[stream])
+  const showVideo=!!stream&&s.cam
+  return <figure className={`sg-tile ${speaking?'is-speaking':''} ${raised?'is-hand':''}`} aria-label={`${s.name}${s.mic?', microphone on':', microphone off'}${s.cam?', camera on':', camera off'}${raised?', hand raised':''}`}>
+    <video ref={v} data-remote="1" autoPlay playsInline muted className={`sg-video ${showVideo?'':'invisible'}`} style={{transform:'scaleX(-1)'}}/>
+    <Hear stream={stream}/>
+    {!showVideo&&<div className="sg-avatar" aria-hidden="true"><span>{ini}</span></div>}
+    {raised&&<span className="sg-hand">✋ Hand raised</span>}
+    {speaking&&<span className="sg-speak" aria-hidden="true"><i/><i/><i/></span>}
+    <figcaption className="sg-name"><span className="truncate">{s.name}</span><span className="sg-icons" aria-hidden="true">{s.mic?'🎙️':'🔇'}{s.cam?'🎥':''}</span></figcaption>
+  </figure>
+}
+/* Teacher: every student in one grid, Teams-style. Students with the camera on show their video; the rest show their initials. */
+function StudentGallery({roster,feeds,hands,onClose}){
+  const live=roster.filter(s=>feeds[s.id]||s.cam).length
+  return <div className="sg-wrap" role="region" aria-label="Student gallery">
+    <div className="sg-head">
+      <div className="min-w-0"><p className="sd-kicker">Gallery view</p><h3 className="sd-title">{roster.length} student{roster.length===1?'':'s'} · {live} with camera on</h3></div>
+      <div className="sd-actions">
+        <button type="button" className="sd-btn" onClick={unlockSound} title="Turn on students' sound">🔊 Turn on sound</button>
+        <button type="button" className="sd-btn" onClick={onClose}>🖼️ Back to board</button>
+      </div>
+    </div>
+    {roster.length===0?<div className="sg-empty"><span aria-hidden="true">👥</span><p>No students have joined yet. Their faces appear here as soon as they join.</p></div>
+      :<div className="sg-grid">{roster.map(s=><GalleryTile key={s.id} s={s} stream={feeds[s.id]} raised={hands.some(h=>h.id===s.id)}/>)}</div>}
+  </div>
+}
+/* Plays one student's voice through its own audio element (the video stays muted, so nothing plays twice).
+   Browsers can block sound until the teacher taps once, so a 'Tap to hear' button appears when that happens. */
+function Hear({stream}){
+  const a=useRef(null), [blocked,setBlocked]=useState(false)
+  const start=()=>{ const el=a.current; if(!el) return; el.play().then(()=>setBlocked(false)).catch(()=>setBlocked(true)) }
+  useEffect(()=>{ const el=a.current; if(!el||!stream) return; el.srcObject=stream; start() },[stream])
+  return <>
+    <audio ref={a} autoPlay playsInline/>
+    {blocked&&<button type="button" className="sg-hear" onClick={e=>{ e.stopPropagation(); start() }}>🔊 Tap to hear students</button>}
+  </>
+}
+function StudentCams({feeds,peers,media,total,onViewAll}){
   const ids=Object.keys(feeds)
-  if(ids.length===0) return null
-  return <div className="absolute bottom-3 left-3 z-[5] flex max-w-[55%] flex-wrap gap-2" aria-label="Students' cameras">
-    {ids.map(id=>{ const p=peers.find(x=>x.id===id); const on=media[id]?media[id].cam:true
+  if(ids.length===0&&!total) return null
+  return <div className="sc-strip" aria-label="Students">
+    {ids.slice(0,3).map(id=>{ const p=peers.find(x=>x.id===id); const on=media[id]?media[id].cam:true
       return <StudentCam key={id} stream={feeds[id]} name={p?p.name:'Student'} on={on}/> })}
+    {total>0&&<button type="button" className="sc-all" onClick={onViewAll} aria-label={`View all ${total} students`}><span aria-hidden="true">👥</span><span>View all</span><b>{total}</b></button>}
   </div>
 }
 function StudentCam({stream,name,on}){
   const v=useRef(null)
-  useEffect(()=>{ if(v.current){ v.current.srcObject=stream; v.current.muted=false; v.current.play?.().catch(()=>{}) } },[stream])
-  return <div className="relative h-20 w-28 overflow-hidden rounded-lg border border-white/40 bg-slate-800 shadow">
-    <video ref={v} autoPlay playsInline className={`h-full w-full object-cover ${on?'':'invisible'}`} style={{transform:'scaleX(-1)'}}/>
-    {!on&&<div className="absolute inset-0 grid place-items-center bg-slate-700 text-2xl font-bold text-white" aria-label="Camera off">{(name||'?').slice(0,1).toUpperCase()}</div>}
-    <span className="absolute bottom-0 left-0 right-0 truncate bg-black/60 px-1 text-[10px] text-white">{name}</span>
+  useEffect(()=>{ if(v.current&&stream){ v.current.srcObject=stream; v.current.play?.().catch(()=>{}) } },[stream])
+  return <div className="sc-tile">
+    <video ref={v} autoPlay playsInline muted className={`sc-video ${on?'':'invisible'}`} style={{transform:'scaleX(-1)'}}/>
+    <Hear stream={stream}/>
+    {!on&&<div className="sc-off" aria-label="Camera off">{(name||'?').slice(0,1).toUpperCase()}</div>}
+    <span className="sc-name">{name}</span>
   </div>
 }
 
@@ -218,8 +326,9 @@ export function Live(){
 
  /* ---------- whiteboard drawing ---------- */
  const draw=(s,from)=>{const c=cv.current;if(!c||!s.pts.length)return;const x=c.getContext('2d'),W=c.width,H=c.height,p=s.pts
-  x.save();x.lineCap='round';x.lineJoin='round';x.strokeStyle=s.color;x.fillStyle=s.color;x.lineWidth=s.tool==='pen'?s.size:s.size*4
+  x.save();x.lineCap='round';x.lineJoin='round';x.strokeStyle=s.color;x.fillStyle=s.color;x.lineWidth=s.tool==='eraser'?s.size*4:s.tool==='pencil'?Math.max(1.2,s.size*.4):s.size
   if(s.tool==='eraser')x.globalCompositeOperation='destination-out';if(s.tool==='hl')x.globalAlpha=.35
+  if(s.tool==='pencil')x.globalAlpha=.85
   const a=Math.max(from-1,0);x.beginPath();x.moveTo(p[a][0]*W,p[a][1]*H)
   if(p.length===1){x.arc(p[0][0]*W,p[0][1]*H,x.lineWidth/2,0,7);x.fill()}else{for(let i=a+1;i<p.length;i++)x.lineTo(p[i][0]*W,p[i][1]*H);x.stroke()}x.restore()}
  const stroke=m=>{let s=strokes.current.get(m.sid);if(!s){s={tool:m.tool,color:m.color,size:m.size,pts:[]};strokes.current.set(m.sid,s);order.current.push(m.sid)}const from=s.pts.length;s.pts.push(...m.pts);draw(s,from)}
@@ -426,19 +535,21 @@ export function Live(){
  const endClass=async()=>{if(host&&!confirm(recRef.current?'End the live class for everyone? The recording will be saved.':'End the live class for everyone?'))return;if(recRef.current)await stopRecording();if(fsEl())(document.exitFullscreen||document.webkitExitFullscreen).call(document);setPfs(false);if(host)send({type:'end'});stop();setPhase('ended')}
 
  const T=({k,children})=><button className={`btn2 !min-h-[40px] ${tool===k?'bg-teal/20 !border-teal':''}`} aria-pressed={tool===k} onClick={()=>setTool(k)}>{children}</button>
+ const [dockOpen,setDockOpen]=useState(true)
+ const [view,setView]=useState('board')
  const students=peers.filter(p=>p.role==='STUDENT').length+(host?0:1)
  const secs=t0?Math.max(0,Math.floor((now-t0)/1000)):null
 
  if(phase==='lobby'||phase==='ended')return <div className={`cr lt-${ltheme} mx-auto max-w-lg`}><div className="box text-center"><p className="font-hand text-2xl text-teal">{host?'ready when you are':'your live classroom'}</p><h1 className="text-3xl text-navy">{phase==='ended'?'Class ended':host?'Start live class':'Join live class'}</h1>
   <p className="my-2">{phase==='ended'?(endNote||'The class has ended, or you need to enroll to join.'):host?'Your camera and microphone will be used. Students join from their dashboard, no Zoom or Meet needed.':'Your teacher lets you in from a waiting room. Video, voice and the whiteboard appear here once you are in.'}</p>
-  {phase==='lobby'&&host&&<div className="mx-auto my-4 grid max-w-sm grid-cols-2 gap-2">{Object.entries(MODES).map(([k,md])=><button key={k} type="button" aria-pressed={mode===k} className={`btn2 ${mode===k?'bg-teal/20 !border-teal':''}`} onClick={()=>setMode(k)}>{md.icon} {md.label}</button>)}</div>}
+  {phase==='lobby'&&host&&<div className="mx-auto my-4 grid max-w-sm grid-cols-2 gap-2">{Object.entries(MODES).map(([k,md])=><button key={k} type="button" aria-pressed={mode===k} className={`mode-pick ${mode===k?'is-on':''}`} onClick={()=>setMode(k)}>{md.icon} {md.label}</button>)}</div>}
   <p role="alert" className="text-amber-700">{err}</p>{phase==='lobby'&&<button className="btn" onClick={()=>start()}>{host?'🔴 Go live':'Join class'}</button>}<Link className="btn2 ml-2" to={host?'/teacher?tab=live':'/dashboard'}>{host?'Back':'Return to dashboard'}</Link>
   {host&&phase==='ended'&&<div className="mt-4 text-left">{endRep?<AttendanceTable rows={endRep}/>:<button type="button" className="btn2" onClick={async()=>{try{setEndRep((await api.get(`/staff/live/${id}/attendance`)).data)}catch(x){setErr(msg(x))}}}>View attendance</button>}</div>}
   <video ref={vid} className="hidden"/></div></div>
 
  const boardish=mode==='board'||big,cvZ=boardish?3:2,imZ=boardish?2:1
  const secBody=<>
-  {sec==='draw'&&host&&<div className="grid gap-3"><div className="flex flex-wrap gap-1.5"><T k="pen">✏️ Pen</T><T k="hl">🖍 Highlight</T><T k="eraser">🧽 Eraser</T><T k="move">✋ Move images</T></div>
+  {sec==='draw'&&host&&<div className="grid gap-3"><div className="flex flex-wrap gap-1.5"><T k="pen">✏️ Pen</T><T k="pencil">✒️ Pencil</T><T k="hl">🖍 Highlight</T><T k="eraser">🧽 Eraser</T><T k="move">✋ Move images</T></div>
    <div className="flex flex-wrap items-center gap-1.5">{COLORS.map(c=><button key={c} aria-label={`Colour ${c}`} aria-pressed={color===c} onClick={()=>{setColor(c);if(tool==='eraser'||tool==='move')setTool('pen')}} className={`h-8 w-8 rounded-full border-2 ${color===c?'border-teal ring-2 ring-teal/40':'border-white/40'}`} style={{background:c}}/>)}
     <input type="color" aria-label="Custom colour" value={color} onChange={e=>setColor(e.target.value)} className="h-9 w-9 rounded bg-transparent"/></div>
    <label className="flex items-center gap-2 text-sm">Size<input className="flex-1" type="range" min="1" max="20" value={size} onChange={e=>setSize(+e.target.value)}/></label>
@@ -459,33 +570,48 @@ export function Live(){
  const recActive=rec==='recording'||rec==='paused'
  return <div ref={room} className={`cr lt-${ltheme} ${fsOn?'cr-fs':''}`} data-ui={showUi?'on':'off'} onMouseMove={()=>autoHide&&poke()} onPointerDown={e=>autoHide&&e.pointerType!=='mouse'&&poke()} onTouchStart={()=>autoHide&&poke()} onKeyDown={()=>autoHide&&poke()}>
   {!host&&recOn?.on&&<div role="status" className="rec-banner"><span className="animate-pulse text-red-500" aria-hidden="true">●</span><span>{recOn.paused?'Recording is paused.':'This class is being recorded.'} Recordings are shared only with students of this course.</span></div>}
-  <div className="cr-top" role="toolbar" aria-label="Class controls" onKeyDown={toolKey} onMouseEnter={()=>{over.current=true}} onMouseLeave={()=>{over.current=false}} onFocusCapture={()=>{over.current=true}} onBlurCapture={()=>{over.current=false}}>
-   <span className="animate-pulse rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold">● LIVE</span>
-   <span className="text-sm tabular-nums" title="Session time" aria-label={`Session time ${clock(secs)}`}>⏱ {clock(secs)}</span>
-   <span className="hidden text-sm opacity-80 sm:inline" title="Students in class">👥 {students}</span>
-   {host&&recActive&&<span role="status" className={`rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums ${rec==='paused'?'bg-amber-500':'bg-red-600'}`}>{rec==='paused'?'❚❚ PAUSED':'● REC'} {clock(Math.floor((ri?.elapsedMs||0)/1000))}</span>}
-   {host&&recActive&&ri&&(!ri.online||ri.attempt>0)&&<span className="rounded-full bg-slate-700 px-2.5 py-0.5 text-xs font-semibold">{!ri.online?'Offline · keeping the recording safe':`Reconnecting${ri.retryIn?` · retry in ${ri.retryIn}s`:'…'}`}</span>}
-   {host&&rec==='saving'&&<span role="status" className="rounded-full bg-amber-500 px-2.5 py-0.5 text-xs font-bold">Saving recording{ri?.queued?` · ${ri.queued} part${ri.queued>1?'s':''} left`:''}</span>}
+  <div className="cr-top cr-dock" role="toolbar" aria-label="Class controls" onKeyDown={toolKey} onMouseEnter={()=>{over.current=true}} onMouseLeave={()=>{over.current=false}} onFocusCapture={()=>{over.current=true}} onBlurCapture={()=>{over.current=false}}>
+   <div className="cr-group cr-status">
+    <span className="cr-live"><i aria-hidden="true"/>LIVE</span>
+    <span className="cr-chip tabular-nums" title="Session time" aria-label={`Session time ${clock(secs)}`}>⏱ {clock(secs)}</span>
+    {host?<button type="button" data-tb className={`cr-chip cr-people ${open&&sec==='people'?'is-on':''}`} aria-expanded={open&&sec==='people'} aria-controls="live-tools" aria-label={`People, ${students} in class${waitList.length?`, ${waitList.length} waiting`:''}`} onClick={()=>open&&sec==='people'?setOpen(false):openPanel('people')}><span aria-hidden="true">👥</span><span>People</span><b className="cr-count">{students}</b>{waitList.length>0&&<b className="cr-badge">{waitList.length} waiting</b>}</button>
+     :<span className="cr-chip" title="Students in class">👥 {students}</span>}
+    {host&&recActive&&<span role="status" className={`cr-rec ${rec==='paused'?'is-paused':''}`}>{rec==='paused'?'❚❚ PAUSED':'● REC'} {clock(Math.floor((ri?.elapsedMs||0)/1000))}</span>}
+    {host&&recActive&&ri&&(!ri.online||ri.attempt>0)&&<span className="cr-chip is-warn">{!ri.online?'Offline · keeping the recording safe':`Reconnecting${ri.retryIn?` · retry in ${ri.retryIn}s`:'…'}`}</span>}
+    {host&&rec==='saving'&&<span role="status" className="cr-chip is-warn">Saving recording{ri?.queued?` · ${ri.queued} left`:''}</span>}
+   </div>
+   {host&&<div className="cr-group cr-draw" role="group" aria-label="Drawing tools">
+    <button type="button" data-tb className={`cr-tool ${tool==='pen'?'is-on':''}`} aria-pressed={tool==='pen'} onClick={()=>setTool('pen')} title="Pen"><span aria-hidden="true">✏️</span><em>Pen</em></button>
+    <button type="button" data-tb className={`cr-tool ${tool==='pencil'?'is-on':''}`} aria-pressed={tool==='pencil'} onClick={()=>setTool(tool==='pencil'?'pen':'pencil')} title="Pencil: thin, soft line"><span aria-hidden="true">✒️</span><em>Pencil</em></button>
+    <button type="button" data-tb className={`cr-tool ${tool==='eraser'?'is-on':''}`} aria-pressed={tool==='eraser'} onClick={()=>setTool(tool==='eraser'?'pen':'eraser')} title="Eraser: drag over the board"><span aria-hidden="true">🧽</span><em>Erase</em></button>
+    <label className="cr-size" title={`${tool==='eraser'?'Eraser':tool==='pencil'?'Pencil':'Pen'} size`}><span className="cr-dot" style={{width:4+size*.7,height:4+size*.7}} aria-hidden="true"/>
+     <input type="range" min="1" max="20" value={size} onChange={e=>setSize(+e.target.value)} aria-label={`${tool==='eraser'?'Eraser':tool==='pencil'?'Pencil':'Pen'} size`}/><span className="tabular-nums">{size}</span></label>
+    <button type="button" data-tb className="cr-tool" onClick={()=>act('undo')} title="Undo last stroke"><span aria-hidden="true">↶</span><em>Undo</em></button>
+    <button type="button" data-tb className="cr-tool" onClick={()=>act('clear')} title="Clear the board"><span aria-hidden="true">🗑</span><em>Clear</em></button>
+   </div>}
    <span className="flex-1"/>
-   {host&&<>
-    <button type="button" data-tb className={`cb ${tool==='eraser'?'!bg-teal/30':''}`} aria-pressed={tool==='eraser'} onClick={()=>setTool(tool==='eraser'?'pen':'eraser')} title="Eraser: drag over the board"><span aria-hidden="true">🧽</span><span className="hidden md:inline">{tool==='eraser'?'Erasing':'Erase'}</span></button>
-    <button type="button" data-tb className="cb" onClick={()=>act('undo')} title="Undo last stroke"><span aria-hidden="true">↶</span><span className="hidden md:inline">Undo</span></button>
-    <button type="button" data-tb className="cb" onClick={()=>act('clear')} title="Clear the board"><span aria-hidden="true">🗑</span><span className="hidden md:inline">Clear</span></button>
-   </>}
-   <button type="button" data-tb className="cb" title="Change look" aria-label={`Change look, current ${ltheme}`} onClick={()=>{const n=ltheme==='studio'?'classic':ltheme==='classic'?'night':'studio';localStorage.setItem('ms_live_theme',n);setLtheme(n)}}><span aria-hidden="true">🎨</span><span className="hidden md:inline">{ltheme}</span></button>
-   <>
-    <button type="button" data-tb className={`cb ${mic?'':'cb-off'}`} onClick={()=>toggle('audio',mic,setMic)} aria-pressed={!mic} aria-label={mic?'Mute microphone':'Unmute microphone'} title="Microphone (M)"><span aria-hidden="true">{mic?'🎙️':'🔇'}</span><span className="hidden md:inline">{mic?'Mic':'Muted'}</span></button>
-    <button type="button" data-tb className={`cb ${cam?'':'cb-off'}`} onClick={()=>toggle('video',cam,setCam)} aria-pressed={!cam} aria-label={cam?'Turn camera off':'Turn camera on'} title="Camera"><span aria-hidden="true">{cam?'🎥':'📷'}</span><span className="hidden md:inline">{cam?'Camera':'Cam off'}</span></button></>
-   {!host&&<button type="button" data-tb className={`cb ${myHand?'!bg-amber-400 !text-slate-900':''}`} aria-pressed={myHand} aria-label={myHand?'Lower your hand':'Raise your hand'} title={myHand?'Lower your hand':'Raise your hand to ask a question'} onClick={()=>raiseHand(!myHand)}><span aria-hidden="true">✋</span><span>{myHand?(hands.find(h=>h.id===myId.current&&h.acked)?'Acknowledged':'Hand raised'):'Raise hand'}</span></button>}
-<button type="button" data-tb className="cb relative" aria-expanded={open&&sec==='chat'} aria-controls="live-tools" aria-label={`Chat${unread.chat?`, ${unread.chat} new`:''}`} onClick={()=>open&&sec==='chat'?setOpen(false):openPanel('chat')}><span aria-hidden="true">💬</span><span className="hidden sm:inline">Chat</span>{unread.chat>0&&<span className="ltile-badge !static">{unread.chat}</span>}</button>
-   {host?<button type="button" data-tb className="cb relative" aria-expanded={open} aria-controls="live-tools" onClick={togglePanel}><span aria-hidden="true">🛠️</span><span>Tools</span>{unread.files>0&&<span className="ltile-badge !static">{unread.files}</span>}</button>
-    :<button type="button" data-tb className="cb relative" aria-expanded={open} aria-controls="live-tools" onClick={togglePanel}><span aria-hidden="true">📚</span><span className="hidden sm:inline">Class panel</span>{unread.files>0&&<span className="ltile-badge !static">{unread.files}</span>}</button>}
-   {host&&recActive&&<button type="button" data-tb className="cb" onClick={togglePause} aria-pressed={rec==='paused'} aria-label={rec==='paused'?'Resume recording':'Pause recording'} title="Pause or resume the recording"><span aria-hidden="true">{rec==='paused'?'▶':'⏸'}</span><span className="hidden lg:inline">{rec==='paused'?'Resume':'Pause'}</span></button>}
-   {host&&<button type="button" data-tb className={`cb ${recActive?'cb-danger':''}`} disabled={rec==='saving'} onClick={()=>recActive?stopRecording():openConsent()} aria-label={recActive?'Stop recording and save':'Start recording'} aria-pressed={recActive} title="Record this class"><span aria-hidden="true">{recActive?'⏹':'⏺'}</span><span className="hidden lg:inline">{recActive?'Stop':'Record'}</span></button>}
-   <button type="button" data-tb className="cb" onClick={toggleFs} aria-label={fsOn?'Exit full screen':'Full screen'} title="Full screen (F)"><span aria-hidden="true">{fsOn?'🗗':'⛶'}</span><span className="hidden sm:inline">{fsOn?'Exit full screen':'Full screen'}</span></button>
-   {host?<button type="button" data-tb className="cb cb-danger" onClick={endClass}><span aria-hidden="true">⏹</span><span className="hidden sm:inline">End class</span></button>:<Link data-tb className="cb" to="/dashboard" onClick={()=>{if(fsEl())(document.exitFullscreen||document.webkitExitFullscreen).call(document)}}>Leave</Link>}</div>
+   <div className="cr-group cr-media" role="group" aria-label="Your microphone and camera">
+    <button type="button" data-tb className={`cr-tool ${mic?'':'is-off'}`} onClick={()=>toggle('audio',mic,setMic)} aria-pressed={!mic} aria-label={mic?'Mute microphone':'Unmute microphone'} title="Microphone (M)"><span aria-hidden="true">{mic?'🎙️':'🔇'}</span><em>{mic?'Mic':'Muted'}</em></button>
+    <button type="button" data-tb className={`cr-tool ${cam?'':'is-off'}`} onClick={()=>toggle('video',cam,setCam)} aria-pressed={!cam} aria-label={cam?'Turn camera off':'Turn camera on'} title="Camera"><span aria-hidden="true">{cam?'🎥':'📷'}</span><em>{cam?'Camera':'Cam off'}</em></button>
+    {!host&&<button type="button" data-tb className={`cr-tool ${myHand?'is-hand':''}`} aria-pressed={myHand} aria-label={myHand?'Lower your hand':'Raise your hand'} title={myHand?'Lower your hand':'Raise your hand to ask a question'} onClick={()=>raiseHand(!myHand)}><span aria-hidden="true">✋</span><em>{myHand?(hands.find(h=>h.id===myId.current&&h.acked)?'Acked':'Hand up'):'Raise'}</em></button>}
+   </div>
+   <div className="cr-group cr-panels" role="group" aria-label="Panels">
+    {host&&<button type="button" data-tb className={`cr-tool ${view==='gallery'?'is-on':''}`} aria-pressed={view==='gallery'} onClick={()=>setView(v=>v==='gallery'?'board':'gallery')} title="See every student's camera and who is speaking"><span aria-hidden="true">🖼️</span><em>Gallery</em></button>}
+    <button type="button" data-tb className={`cr-tool relative ${open&&sec==='chat'?'is-on':''}`} aria-expanded={open&&sec==='chat'} aria-controls="live-tools" aria-label={`Chat${unread.chat?`, ${unread.chat} new`:''}`} onClick={()=>open&&sec==='chat'?setOpen(false):openPanel('chat')}><span aria-hidden="true">💬</span><em>Chat</em>{unread.chat>0&&<b className="cr-badge cr-badge-corner">{unread.chat}</b>}</button>
+    {host?<button type="button" data-tb className={`cr-tool relative ${open?'is-on':''}`} aria-expanded={open} aria-controls="live-tools" onClick={togglePanel}><span aria-hidden="true">🛠️</span><em>Tools</em>{unread.files>0&&<b className="cr-badge cr-badge-corner">{unread.files}</b>}</button>
+     :<button type="button" data-tb className={`cr-tool relative ${open?'is-on':''}`} aria-expanded={open} aria-controls="live-tools" onClick={togglePanel}><span aria-hidden="true">📚</span><em>Class</em>{unread.files>0&&<b className="cr-badge cr-badge-corner">{unread.files}</b>}</button>}
+    <button type="button" data-tb className="cr-tool cr-theme" title="Change look" aria-label={`Change look, current ${ltheme}`} onClick={()=>{const n=ltheme==='studio'?'classic':ltheme==='classic'?'night':'studio';localStorage.setItem('ms_live_theme',n);setLtheme(n)}}><span aria-hidden="true">🎨</span><em>{ltheme}</em></button>
+   </div>
+   <div className="cr-group cr-session" role="group" aria-label="Session">
+    {host&&recActive&&<button type="button" data-tb className={`cr-tool ${rec==='paused'?'is-on':''}`} onClick={togglePause} aria-pressed={rec==='paused'} aria-label={rec==='paused'?'Resume recording':'Pause recording'} title="Pause or resume the recording"><span aria-hidden="true">{rec==='paused'?'▶':'⏸'}</span><em>{rec==='paused'?'Resume':'Pause'}</em></button>}
+    {host&&<button type="button" data-tb className={`cr-tool ${recActive?'is-rec':''}`} disabled={rec==='saving'} onClick={()=>recActive?stopRecording():openConsent()} aria-label={recActive?'Stop recording and save':'Start recording'} aria-pressed={recActive} title="Record this class"><span aria-hidden="true">{recActive?'⏹':'⏺'}</span><em>{recActive?'Stop':'Record'}</em></button>}
+    <button type="button" data-tb className="cr-tool cr-full" onClick={toggleFs} aria-label={fsOn?'Exit full screen':'Full screen'} title="Full screen (F)"><span aria-hidden="true">{fsOn?'🗗':'⛶'}</span><em>{fsOn?'Exit':'Full'}</em></button>
+    {host?<button type="button" data-tb className="cr-tool is-end" onClick={endClass}><span aria-hidden="true">⏹</span><em>End</em></button>
+     :<Link data-tb className="cr-tool" to="/dashboard" onClick={()=>{if(fsEl())(document.exitFullscreen||document.webkitExitFullscreen).call(document)}}><span aria-hidden="true">↩</span><em>Leave</em></Link>}
+   </div>
+  </div>
 
-  <div className="cr-wrap">
+  <div className={`cr-wrap ${host?'cr-split':''}`}>
    <div ref={frame} className={`frame ${mode==='board'?'frame-board':'frame-tablet'}`}>
     <div ref={stage} className="stage" style={mode==='board'?{background:'#0b1512'}:BG[bg]} onPointerDown={e=>{if(e.target===e.currentTarget)setSel(null)}}>
      <canvas ref={cv} width={1280} height={720} role="img" aria-label="Live whiteboard" className="absolute inset-0 h-full w-full" style={{touchAction:'none',cursor:host&&tool!=='move'?'crosshair':'default',zIndex:cvZ,pointerEvents:host&&tool==='move'?'none':'auto'}} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}/>
@@ -498,11 +624,13 @@ export function Live(){
        <span>{notice}</span>
        {req&&!host&&<button type="button" className="btn !min-h-[30px] !px-3 !py-1 text-xs" onClick={()=>{ const k=req.what==='mic'?'audio':'video'; toggle(k,false,req.what==='mic'?setMic:setCam); setReq(null); setNotice('') }}>{req.what==='mic'?'Unmute':'Turn camera on'}</button>}
        <button type="button" aria-label="Dismiss" className="text-white/70 hover:text-white" onClick={()=>{ setNotice(''); setReq(null) }}>✕</button></div>}
-     {host&&<StudentCams feeds={feeds} peers={peers} media={media}/>}
+     {host&&view!=='gallery'&&<StudentCams feeds={feeds} peers={peers} media={media} total={roster.length} onViewAll={()=>setView('gallery')}/>}
+     {host&&view==='gallery'&&<StudentGallery roster={roster} feeds={feeds} hands={hands} onClose={()=>setView('board')}/>}
      {mode==='board'&&<div className="chalk"/>}
      <div key={mode} className="absolute left-3 top-3 z-20 animate-pop rounded-full bg-black/60 px-3 py-1 text-sm text-white">{MODES[mode].icon} {MODES[mode].label}</div>
      {!host&&!tin&&<div className="absolute inset-0 z-30 grid place-items-center bg-black/50 px-6 text-center text-white"><p className="font-hand text-3xl">{tGone?'Your teacher has disconnected. Waiting for them to come back…':wait?(wait.teacher?'Your teacher will let you in in a moment…':'You are in the waiting room. Your teacher will let you in once the class starts.'):'Waiting for the teacher to start…'}</p></div>}</div></div>
 
+   {host&&<StudentDock roster={roster} hands={hands} allow={allow} send={sendRaw} waitList={waitList} collapsed={!dockOpen} setCollapsed={setDockOpen}/>}
    {open&&<div id="live-tools" className="tool-panel" role="dialog" aria-label={host?'Live Session Tools':'Class panel'}>
     <div className="mb-2 flex items-center gap-2"><b className="flex-1">{host?'🛠️ Live Session Tools':'💬 Class panel'}</b><button type="button" className="cb !min-h-[34px]" onClick={()=>setOpen(false)} aria-label="Close panel">✕</button></div>
     <div className="grid grid-cols-4 gap-2">
