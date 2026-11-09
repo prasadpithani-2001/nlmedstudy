@@ -86,7 +86,7 @@ const WHY=[['👩‍🏫','Expert Teachers','Learn from experienced medical educ
 
 export function Home(){const cat=useGet('/catalog'),demos=useGet('/demos'),st=useGet('/public/stats'),teachers=useGet('/teachers'),reviews=useGet('/public/reviews'),en=useEnrolled(),{user}=useAuth()
  const stats=st&&!Array.isArray(st)?st:null
- const featured=useMemo(()=>(Array.isArray(cat)?[...cat].sort((a,b)=>b.students-a.students||(b.rating||0)-(a.rating||0)||a.id-b.id).slice(0,3):[]),[cat])
+ const featured=useMemo(()=>(Array.isArray(cat)?[...cat].sort((a,b)=>b.students-a.students||(b.rating||0)-(a.rating||0)||a.id-b.id).slice(0,4):[]),[cat])
  const numbers=stats?[[stats.students,'Students',''],[stats.courses,'Courses',''],[stats.teachers,'Expert Teachers',''],stats.satisfaction!=null?[stats.satisfaction,'Student Satisfaction','%']:[stats.liveClasses,'Live Classes','']]:[]
  return <>
  <section className="relative grid items-center gap-8 py-6 sm:gap-10 sm:py-8 lg:grid-cols-[1.1fr_.9fr] lg:py-14">
@@ -100,7 +100,7 @@ export function Home(){const cat=useGet('/catalog'),demos=useGet('/demos'),st=us
  <section aria-label="Learning statistics" className="grid grid-cols-2 gap-3 md:grid-cols-4">{st===null?<Skeletons n={4} h="h-24 sm:h-28"/>:numbers.map(([n,l,suf],i)=><Reveal key={l} delay={i*80}><div className="box text-center"><div className="gradient-text font-serif text-3xl font-extrabold sm:text-4xl"><Count to={Number(n)||0}/>{suf||'+'}</div><div className="mt-1 text-xs font-medium opacity-75 sm:text-sm">{l}</div></div></Reveal>)}</section>
 
  <Section eyebrow="Top picks" title="Featured Courses" sub="Hand-built courses with live classes, notes, tests and doubt support." action={<Link className="btn2" to="/courses">View all courses →</Link>}>
-  <div className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3">{cat===null?<Skeletons h="h-64 sm:h-72"/>:featured.length===0?<Empty icon="📚" title="Courses are coming soon">Teachers are preparing their courses. Check back shortly.</Empty>:featured.map((c,i)=><CourseCard key={c.id} c={c} i={i} enrolled={en?.has(c.id)}/>)}</div></Section>
+  <div className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-2 xl:grid-cols-4">{cat===null?<Skeletons h="h-64 sm:h-72"/>:featured.length===0?<Empty icon="📚" title="Courses are coming soon">Teachers are preparing their courses. Check back shortly.</Empty>:featured.map((c,i)=><CourseCard key={c.id} c={c} i={i} enrolled={en?.has(c.id)}/>)}</div></Section>
 
  <Section eyebrow="Why choose us" title="Why NLMed Study?" sub="Everything you need to prepare with confidence, without the clutter.">
   <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">{WHY.map(([ic,t,d],i)=><Reveal key={t} delay={i*60}><div className="box h-full p-3.5 hover:-translate-y-1 sm:p-5"><div className="grid h-10 w-10 place-items-center rounded-2xl bg-gradient-to-br from-teal/20 to-brand2/20 text-xl sm:h-12 sm:w-12 sm:text-2xl">{ic}</div><h3 className="mt-2 text-sm text-navy sm:mt-3 sm:text-lg">{t}</h3><p className="mt-1 text-xs opacity-75 sm:text-sm">{d}</p></div></Reveal>)}</div></Section>
