@@ -418,3 +418,91 @@ button.cr-chip:hover{background:rgba(255,255,255,.16)}
 /* compact on narrower screens: icons with names only on hover/title */
 @media (max-width:1280px){.cr-tool em{display:none}.cr-tool{min-width:44px}.cr-size input{width:64px}.cr-group{gap:.1rem}}
 @media (prefers-reduced-motion:reduce){.cr-tool,.cr-tool>span[aria-hidden=true],.sd-row,.sd-av{transition:none!important;transform:none!important}}
+
+/* ===== Live class: student strip + tap-to-hear (append AFTER live-pro block) ===== */
+.sc-strip{display:flex;align-items:center;gap:.5rem;overflow-x:auto;padding:.45rem;border-radius:1rem;background:rgba(2,6,23,.55);border:1px solid rgba(148,163,184,.14);scrollbar-width:thin}
+.sc-tile{position:relative;flex:0 0 150px;aspect-ratio:16/9;overflow:hidden;border-radius:.85rem;background:linear-gradient(160deg,#1e293b,#0b1222);box-shadow:0 10px 22px -14px rgba(0,0,0,.9),inset 0 0 0 1px rgba(255,255,255,.07);transition:transform .25s cubic-bezier(.2,.8,.2,1),box-shadow .3s}
+.sc-tile:hover{transform:translateY(-2px);box-shadow:0 16px 30px -16px rgba(45,212,191,.45),inset 0 0 0 1px rgba(94,234,212,.4)}
+.sc-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.sc-off{position:absolute;inset:0;display:grid;place-items:center;font-size:1.3rem;opacity:.8}
+.sc-name{position:absolute;left:.35rem;right:.35rem;bottom:.35rem;z-index:3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:.5rem;padding:.15rem .4rem;background:rgba(2,6,23,.65);backdrop-filter:blur(6px);font-size:.7rem;font-weight:600;color:#e8eef9}
+.sc-tile.is-speaking{box-shadow:0 0 0 2px #22c55e,0 0 20px -4px rgba(34,197,94,.7)}
+.sc-all{flex:0 0 auto;display:inline-flex;align-items:center;gap:.35rem;border-radius:.85rem;border:1px solid rgba(94,234,212,.35);background:rgba(45,212,191,.12);color:#ccfbf1;padding:.45rem .75rem;font-size:.78rem;font-weight:700;white-space:nowrap;transition:background-color .2s,transform .15s}
+.sc-all:hover{background:rgba(45,212,191,.24);transform:translateY(-1px)}
+.sg-hear{position:absolute;left:.75rem;bottom:.75rem;z-index:20;display:inline-flex;align-items:center;gap:.4rem;border-radius:999px;border:0;background:linear-gradient(135deg,#7c3aed,#14b8a6);color:#fff;padding:.45rem .9rem;font-size:.8rem;font-weight:700;box-shadow:0 10px 24px -10px rgba(124,58,237,.9);cursor:pointer;transition:transform .15s}
+.sg-hear:hover{transform:translateY(-1px) scale(1.02)}
+@media (prefers-reduced-motion:reduce){.sc-tile,.sg-hear,.sc-all{transition:none!important;transform:none!important}}
+
+/* ===== Live class: Teams-style People bar + clean toolbar (append LAST in index.css, after the live-v4 block) ===== */
+
+/* Toolbar: nothing is clipped. On a narrow screen it wraps to a second row, so End and Leave always stay visible. */
+.cr-top.cr-dock{flex-wrap:wrap;row-gap:.45rem;overflow:visible;padding:.55rem .65rem}
+.cr-top.cr-dock>.flex-1{flex:1 1 auto}
+.cr-tool.is-end{min-width:66px;background:linear-gradient(135deg,#f43f5e,#be123c);color:#fff;box-shadow:0 10px 24px -10px rgba(244,63,94,.95)}
+.cr-tool.is-end em{display:block;color:#fff}
+.cr-tool.is-end:hover{background:linear-gradient(135deg,#fb7185,#e11d48)}
+
+/* Board takes the full width; the People bar sits underneath it, like Teams */
+.cr-wrap.cr-stack{display:block}
+
+.people-bar{position:relative;margin-top:.75rem;border-radius:1.15rem;padding:.75rem .85rem .85rem;color:#e6edf7;background:linear-gradient(180deg,rgba(17,24,43,.92),rgba(7,11,22,.96));border:1px solid rgba(94,234,212,.14);box-shadow:0 24px 50px -26px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.05);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+.people-bar.is-collapsed{padding:.55rem .85rem}
+.pb-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5rem .8rem}
+.pb-title{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .6rem;min-width:0}
+.pb-kicker{font-size:.68rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#5eead4}
+.pb-count{font-size:1rem;font-weight:800;background:linear-gradient(90deg,#fff,#a5f3fc);-webkit-background-clip:text;background-clip:text;color:transparent}
+.pb-wait{display:inline-flex;align-items:center;gap:.3rem;border-radius:999px;padding:.2rem .6rem;font-size:.75rem;font-weight:700;background:rgba(245,158,11,.16);border:1px solid rgba(245,158,11,.42);color:#fde68a}
+.pb-actions{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem}
+.pb-btn{display:inline-flex;align-items:center;gap:.3rem;min-height:34px;border-radius:.75rem;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:#e8eef9;padding:.35rem .7rem;font-size:.78rem;font-weight:700;white-space:nowrap;transition:background-color .2s,transform .15s,box-shadow .25s,border-color .2s}
+.pb-btn:hover:not(:disabled){background:rgba(94,234,212,.16);border-color:rgba(94,234,212,.42);transform:translateY(-1px)}
+.pb-btn:focus-visible{outline:2px solid #5eead4;outline-offset:2px}
+.pb-btn:disabled{opacity:.42;cursor:not-allowed}
+.pb-btn.is-on{background:linear-gradient(135deg,#7c3aed,#14b8a6);border-color:transparent;color:#fff;box-shadow:0 10px 22px -12px rgba(124,58,237,.9)}
+.pb-go{background:linear-gradient(135deg,#10b981,#0d9488);border-color:transparent;color:#fff}
+.pb-icon{min-width:34px;justify-content:center;padding:.35rem .5rem}
+
+.pb-empty{margin:.7rem 0 .2rem;padding:1.2rem .5rem;border:1px dashed rgba(148,163,184,.3);border-radius:1rem;text-align:center;font-size:.9rem;opacity:.75}
+
+/* the row of student tiles: scrolls sideways when the class is big */
+.pb-strip{display:flex;gap:.65rem;margin:.75rem 0 0;padding:.15rem .1rem .45rem;list-style:none;overflow-x:auto;scroll-snap-type:x proximity;scrollbar-width:thin;scrollbar-color:rgba(148,163,184,.35) transparent}
+.pb-strip>li{flex:0 0 auto;scroll-snap-align:start}
+
+.pb-tile{position:relative;width:clamp(168px,19vw,240px);aspect-ratio:16/9;margin:0;overflow:hidden;border-radius:1rem;background:linear-gradient(160deg,#1e293b,#0b1222);box-shadow:0 14px 28px -16px rgba(0,0,0,.95),inset 0 0 0 1px rgba(255,255,255,.08);transition:transform .3s cubic-bezier(.2,.8,.2,1),box-shadow .3s}
+.pb-tile:hover,.pb-tile:focus-within{transform:translateY(-3px);box-shadow:0 22px 40px -18px rgba(45,212,191,.42),inset 0 0 0 1px rgba(94,234,212,.42)}
+.pb-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.pb-avatar{position:absolute;inset:0;display:grid;place-items:center}
+.pb-avatar span{display:grid;place-items:center;width:56px;height:56px;border-radius:50%;font-size:1.2rem;font-weight:800;color:#fff;background:linear-gradient(135deg,rgb(var(--accent)),rgb(var(--accent2)));box-shadow:0 10px 26px -8px rgb(var(--accent)/.9)}
+
+.pb-name{position:absolute;left:.45rem;right:.45rem;bottom:.45rem;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:.35rem;border-radius:.6rem;padding:.22rem .5rem;background:rgba(2,6,23,.64);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);font-size:.74rem;font-weight:700;color:#f8fafc}
+.pb-name .truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.pb-state{font-size:.72rem;white-space:nowrap}
+
+.pb-hand{position:absolute;left:.45rem;top:.45rem;z-index:3;display:grid;place-items:center;width:30px;height:30px;border-radius:999px;background:linear-gradient(135deg,#fbbf24,#f59e0b);font-size:.9rem;box-shadow:0 6px 16px -6px rgba(245,158,11,.95);animation:pbWave 1.6s ease-in-out infinite;transform-origin:70% 70%}
+@keyframes pbWave{0%,100%{transform:rotate(0)}25%{transform:rotate(-12deg)}75%{transform:rotate(12deg)}}
+
+.pb-tile.is-speaking{box-shadow:0 0 0 2px #22c55e,0 0 24px -4px rgba(34,197,94,.75)}
+.pb-speak{position:absolute;right:.45rem;top:.45rem;z-index:3;display:flex;gap:2px;align-items:flex-end;height:16px;padding:.28rem .4rem;border-radius:999px;background:rgba(34,197,94,.92)}
+.pb-speak i{display:block;width:3px;background:#fff;border-radius:2px;animation:sgBars .6s ease-in-out infinite alternate}
+.pb-speak i:nth-child(2){animation-delay:.15s}.pb-speak i:nth-child(3){animation-delay:.3s}
+
+/* quick actions: appear on hover or keyboard focus */
+.pb-acts{position:absolute;right:.45rem;top:50%;z-index:4;display:flex;flex-direction:column;gap:.3rem;opacity:0;transform:translate(6px,-50%);transition:opacity .2s,transform .25s cubic-bezier(.2,.8,.2,1)}
+.pb-tile:hover .pb-acts,.pb-tile:focus-within .pb-acts{opacity:1;transform:translate(0,-50%)}
+.pb-act{display:grid;place-items:center;width:32px;height:32px;border-radius:999px;border:1px solid rgba(255,255,255,.22);background:rgba(2,6,23,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);font-size:.85rem;cursor:pointer;transition:background-color .2s,transform .15s}
+.pb-act:hover:not(:disabled){background:rgba(94,234,212,.38);transform:scale(1.08)}
+.pb-act:focus-visible{outline:2px solid #5eead4;outline-offset:2px}
+.pb-act:disabled{opacity:.35;cursor:not-allowed}
+
+/* "Tap to hear" when the browser blocks a student's sound */
+.pb-hear{position:absolute;left:50%;top:50%;z-index:5;transform:translate(-50%,-50%);border:0;border-radius:999px;background:linear-gradient(135deg,#7c3aed,#14b8a6);color:#fff;padding:.4rem .8rem;font-size:.74rem;font-weight:700;white-space:nowrap;box-shadow:0 10px 22px -10px rgba(124,58,237,.9);cursor:pointer}
+
+/* full screen: the board fills the screen, the People bar is hidden (open it again by leaving full screen) */
+.cr-fs .people-bar{display:none}
+
+@media (max-width:767px){
+  .pb-tile{width:156px}
+  .pb-btn{font-size:.72rem;padding:.3rem .55rem}
+  .pb-act{width:30px;height:30px}
+}
+@media (hover:none){.pb-acts{opacity:1;transform:translate(0,-50%)}}
+@media (prefers-reduced-motion:reduce){.pb-tile,.pb-acts,.pb-btn,.pb-act,.pb-hand,.pb-speak i{transition:none!important;animation:none!important;transform:none!important}}

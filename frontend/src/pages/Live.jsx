@@ -93,42 +93,6 @@ function PeoplePane({roster,waitList,hands,allow,id,send}){
   </div>
 }
 
-/* Teacher: who is in the class right now, always visible beside the board (desktop). */
-function StudentDock({roster,hands,allow,send,waitList,collapsed,setCollapsed}){
-  const [,tick]=useState(0)
-  useEffect(()=>{const t=setInterval(()=>tick(x=>x+1),30000);return()=>clearInterval(t)},[])
-  const ini=n=>(n||'?').trim().split(/\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase()
-  const mins=t=>{ const m=Math.max(0,Math.round((Date.now()-t)/60000)); return m<1?'just joined':m<60?m+' min':Math.floor(m/60)+' h '+(m%60)+'m' }
-  return <aside aria-label="Students in this class" className={`student-dock ${collapsed?'is-collapsed':''}`}>
-    <div className="sd-head">
-      {!collapsed&&<div className="min-w-0"><p className="sd-kicker">👥 People · in class</p><h3 className="sd-title">{roster.length} student{roster.length===1?'':'s'}</h3></div>}
-      <div className="sd-actions">
-        {!collapsed&&<button type="button" className="sd-btn" onClick={unlockSound} title="Turn on students' sound (use if you cannot hear them)">🔊</button>}
-        {!collapsed&&<button type="button" className="sd-btn" onClick={()=>send({type:'mute_all'})} disabled={roster.length===0} title="Mute every student">🔇 Mute all</button>}
-        <button type="button" className="sd-btn sd-icon" onClick={()=>setCollapsed(c=>!c)} aria-expanded={!collapsed} aria-label={collapsed?'Show students':'Hide students'}>{collapsed?'👥':'›'}</button>
-      </div>
-    </div>
-    {!collapsed&&<>
-      {waitList.length>0&&<div className="sd-wait"><span>⏳ {waitList.length} waiting to join</span><button type="button" className="sd-btn sd-go" onClick={()=>send({type:'admit_all'})}>Admit all</button></div>}
-      {roster.length===0?<p className="sd-empty">No students yet. They appear here as soon as they join.</p>
-      :<ul className="sd-list">{roster.map(s=>{ const raised=hands.some(h=>h.id===s.id); return <li key={s.id} className="sd-row">
-        <span className="sd-av" aria-hidden="true">{ini(s.name)}</span>
-        <div className="sd-meta"><b>{s.name}</b><small>{mins(s.joinedAt)}</small></div>
-        <span className="sd-flags" aria-label="Status">
-          <span className={s.mic?'on':'off'} title={s.mic?'Microphone on':'Microphone off'}>{s.mic?'🎙️':'🔇'}</span>
-          <span className={s.cam?'on':'off'} title={s.cam?'Camera on':'Camera off'}>{s.cam?'🎥':'📷'}</span>
-          {raised&&<span className="hand" title="Hand raised">✋</span>}
-        </span>
-        <span className="sd-acts">
-          {s.mic?<button type="button" className="sd-mini" onClick={()=>send({type:'mute',to:s.id})} aria-label={`Mute ${s.name}`}>Mute</button>
-            :<button type="button" className="sd-mini" disabled={!allow.mic} onClick={()=>send({type:'request_unmute',to:s.id})} aria-label={`Ask ${s.name} to unmute`}>Unmute?</button>}
-          {s.cam?<button type="button" className="sd-mini" onClick={()=>send({type:'disable_cam',to:s.id})} aria-label={`Turn off ${s.name}'s camera`}>Cam off</button>
-            :<button type="button" className="sd-mini" disabled={!allow.cam} onClick={()=>send({type:'request_cam',to:s.id})} aria-label={`Ask ${s.name} to turn on camera`}>Cam on?</button>}
-        </span>
-      </li> })}</ul>}
-    </>}
-  </aside>
-}
 function HandsPane({hands,ack,lower}){
   return <div>
     <h3 className="mb-1 font-semibold">Raised hands</h3>
@@ -254,33 +218,62 @@ function StudentGallery({roster,feeds,hands,onClose}){
 }
 /* Plays one student's voice through its own audio element (the video stays muted, so nothing plays twice).
    Browsers can block sound until the teacher taps once, so a 'Tap to hear' button appears when that happens. */
-function Hear({stream}){
+/* Plays one student's voice through its own audio element (the video stays muted, so nothing plays twice).
+   Browsers can block sound until the teacher taps once, so a 'Tap to hear' button appears when that happens. */
+function Hear({stream,cls='sg-hear'}){
   const a=useRef(null), [blocked,setBlocked]=useState(false)
   const start=()=>{ const el=a.current; if(!el) return; el.play().then(()=>setBlocked(false)).catch(()=>setBlocked(true)) }
   useEffect(()=>{ const el=a.current; if(!el||!stream) return; el.srcObject=stream; start() },[stream])
   return <>
     <audio ref={a} autoPlay playsInline/>
-    {blocked&&<button type="button" className="sg-hear" onClick={e=>{ e.stopPropagation(); start() }}>🔊 Tap to hear students</button>}
+    {blocked&&<button type="button" className={cls} onClick={e=>{ e.stopPropagation(); start() }}>🔊 Tap to hear{cls==='sg-hear'?' students':''}</button>}
   </>
 }
-function StudentCams({feeds,peers,media,total,onViewAll}){
-  const ids=Object.keys(feeds)
-  if(ids.length===0&&!total) return null
-  return <div className="sc-strip" aria-label="Students">
-    {ids.slice(0,3).map(id=>{ const p=peers.find(x=>x.id===id); const on=media[id]?media[id].cam:true
-      return <StudentCam key={id} stream={feeds[id]} name={p?p.name:'Student'} on={on}/> })}
-    {total>0&&<button type="button" className="sc-all" onClick={onViewAll} aria-label={`View all ${total} students`}><span aria-hidden="true">👥</span><span>View all</span><b>{total}</b></button>}
-  </div>
+const initials=n=>(n||'?').trim().split(/\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase()
+
+/* One student in the People bar: camera or initials, name, status, and quick actions that show on hover or keyboard focus. */
+function PbTile({s,stream,raised,allow,send}){
+  const v=useRef(null), speaking=useSpeaking(stream)
+  useEffect(()=>{ if(v.current&&stream){ v.current.srcObject=stream; v.current.muted=true; v.current.play?.().catch(()=>{}) } },[stream])
+  const showVideo=!!stream&&s.cam
+  return <figure className={`pb-tile ${speaking?'is-speaking':''} ${raised?'is-hand':''}`} aria-label={`${s.name}${s.mic?', microphone on':', microphone off'}${s.cam?', camera on':', camera off'}${raised?', hand raised':''}`}>
+    <video ref={v} data-remote="1" autoPlay playsInline muted className={`pb-video ${showVideo?'':'invisible'}`} style={{transform:'scaleX(-1)'}}/>
+    <Hear stream={stream} cls="pb-hear"/>
+    {!showVideo&&<div className="pb-avatar" aria-hidden="true"><span>{initials(s.name)}</span></div>}
+    {raised&&<span className="pb-hand" aria-hidden="true" title="Hand raised">✋</span>}
+    {speaking&&<span className="pb-speak" aria-hidden="true"><i/><i/><i/></span>}
+    <div className="pb-acts">
+      {s.mic?<button type="button" className="pb-act" onClick={()=>send({type:'mute',to:s.id})} aria-label={`Mute ${s.name}`} title="Mute">🔇</button>
+        :<button type="button" className="pb-act" disabled={!allow.mic} onClick={()=>send({type:'request_unmute',to:s.id})} aria-label={`Ask ${s.name} to unmute`} title={allow.mic?'Ask to unmute':'Students may not unmute right now'}>🎙️</button>}
+      {s.cam?<button type="button" className="pb-act" onClick={()=>send({type:'disable_cam',to:s.id})} aria-label={`Turn off ${s.name}'s camera`} title="Turn camera off">📷</button>
+        :<button type="button" className="pb-act" disabled={!allow.cam} onClick={()=>send({type:'request_cam',to:s.id})} aria-label={`Ask ${s.name} to turn on camera`} title={allow.cam?'Ask to turn camera on':'Students may not turn on the camera right now'}>🎥</button>}
+    </div>
+    <figcaption className="pb-name"><span className="truncate">{s.name}</span><span className="pb-state" aria-hidden="true">{s.mic?'🎙️':'🔇'}{s.cam?'🎥':''}</span></figcaption>
+  </figure>
 }
-function StudentCam({stream,name,on}){
-  const v=useRef(null)
-  useEffect(()=>{ if(v.current&&stream){ v.current.srcObject=stream; v.current.play?.().catch(()=>{}) } },[stream])
-  return <div className="sc-tile">
-    <video ref={v} autoPlay playsInline muted className={`sc-video ${on?'':'invisible'}`} style={{transform:'scaleX(-1)'}}/>
-    <Hear stream={stream}/>
-    {!on&&<div className="sc-off" aria-label="Camera off">{(name||'?').slice(0,1).toUpperCase()}</div>}
-    <span className="sc-name">{name}</span>
-  </div>
+
+/* Teacher: the People bar under the board, Teams-style. Every student is a tile in one row; the header holds the class-wide actions. */
+function PeopleBar({roster,feeds,hands,allow,send,waitList,collapsed,onToggle,galleryOn,onGallery}){
+  const n=roster.length
+  return <section aria-label="Students in this class" className={`people-bar ${collapsed?'is-collapsed':''}`}>
+    <header className="pb-head">
+      <div className="pb-title">
+        <span className="pb-kicker">👥 People</span>
+        <b className="pb-count">{n} in class</b>
+        {waitList.length>0&&<span className="pb-wait" role="status">⏳ {waitList.length} waiting</span>}
+      </div>
+      <div className="pb-actions">
+        {waitList.length>0&&<button type="button" className="pb-btn pb-go" onClick={()=>send({type:'admit_all'})}>Admit all</button>}
+        <button type="button" className="pb-btn" onClick={unlockSound} disabled={n===0} title="Turn on students' sound (use if you cannot hear them)">🔊 Sound</button>
+        <button type="button" className="pb-btn" onClick={()=>send({type:'mute_all'})} disabled={n===0} title="Mute every student">🔇 Mute all</button>
+        <button type="button" className={`pb-btn ${galleryOn?'is-on':''}`} onClick={onGallery} disabled={n===0} aria-pressed={galleryOn}>{galleryOn?'🖼️ Back to board':'🖼️ View all'}</button>
+        <button type="button" className="pb-btn pb-icon" onClick={onToggle} aria-expanded={!collapsed} aria-label={collapsed?'Show students':'Hide students'}>{collapsed?'▴':'▾'}</button>
+      </div>
+    </header>
+    {!collapsed&&(n===0
+      ?<p className="pb-empty">No students yet. They appear here as soon as they join.</p>
+      :<ul className="pb-strip" aria-label="Students">{roster.map(s=><li key={s.id}><PbTile s={s} stream={feeds[s.id]} raised={hands.some(h=>h.id===s.id)} allow={allow} send={send}/></li>)}</ul>)}
+  </section>
 }
 
 /* Upload a file from the live room. It is saved as course material (same checks as Resources) and shared with the class straight away. */
@@ -606,12 +599,12 @@ export function Live(){
     {host&&recActive&&<button type="button" data-tb className={`cr-tool ${rec==='paused'?'is-on':''}`} onClick={togglePause} aria-pressed={rec==='paused'} aria-label={rec==='paused'?'Resume recording':'Pause recording'} title="Pause or resume the recording"><span aria-hidden="true">{rec==='paused'?'▶':'⏸'}</span><em>{rec==='paused'?'Resume':'Pause'}</em></button>}
     {host&&<button type="button" data-tb className={`cr-tool ${recActive?'is-rec':''}`} disabled={rec==='saving'} onClick={()=>recActive?stopRecording():openConsent()} aria-label={recActive?'Stop recording and save':'Start recording'} aria-pressed={recActive} title="Record this class"><span aria-hidden="true">{recActive?'⏹':'⏺'}</span><em>{recActive?'Stop':'Record'}</em></button>}
     <button type="button" data-tb className="cr-tool cr-full" onClick={toggleFs} aria-label={fsOn?'Exit full screen':'Full screen'} title="Full screen (F)"><span aria-hidden="true">{fsOn?'🗗':'⛶'}</span><em>{fsOn?'Exit':'Full'}</em></button>
-    {host?<button type="button" data-tb className="cr-tool is-end" onClick={endClass}><span aria-hidden="true">⏹</span><em>End</em></button>
+    {host?<button type="button" data-tb className="cr-tool is-end" onClick={endClass} title="End the live class for everyone" aria-label="End live class for everyone"><span aria-hidden="true">⏹</span><em>End class</em></button>
      :<Link data-tb className="cr-tool" to="/dashboard" onClick={()=>{if(fsEl())(document.exitFullscreen||document.webkitExitFullscreen).call(document)}}><span aria-hidden="true">↩</span><em>Leave</em></Link>}
    </div>
   </div>
 
-  <div className={`cr-wrap ${host?'cr-split':''}`}>
+  <div className="cr-wrap cr-stack">
    <div ref={frame} className={`frame ${mode==='board'?'frame-board':'frame-tablet'}`}>
     <div ref={stage} className="stage" style={mode==='board'?{background:'#0b1512'}:BG[bg]} onPointerDown={e=>{if(e.target===e.currentTarget)setSel(null)}}>
      <canvas ref={cv} width={1280} height={720} role="img" aria-label="Live whiteboard" className="absolute inset-0 h-full w-full" style={{touchAction:'none',cursor:host&&tool!=='move'?'crosshair':'default',zIndex:cvZ,pointerEvents:host&&tool==='move'?'none':'auto'}} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}/>
@@ -624,13 +617,12 @@ export function Live(){
        <span>{notice}</span>
        {req&&!host&&<button type="button" className="btn !min-h-[30px] !px-3 !py-1 text-xs" onClick={()=>{ const k=req.what==='mic'?'audio':'video'; toggle(k,false,req.what==='mic'?setMic:setCam); setReq(null); setNotice('') }}>{req.what==='mic'?'Unmute':'Turn camera on'}</button>}
        <button type="button" aria-label="Dismiss" className="text-white/70 hover:text-white" onClick={()=>{ setNotice(''); setReq(null) }}>✕</button></div>}
-     {host&&view!=='gallery'&&<StudentCams feeds={feeds} peers={peers} media={media} total={roster.length} onViewAll={()=>setView('gallery')}/>}
      {host&&view==='gallery'&&<StudentGallery roster={roster} feeds={feeds} hands={hands} onClose={()=>setView('board')}/>}
      {mode==='board'&&<div className="chalk"/>}
      <div key={mode} className="absolute left-3 top-3 z-20 animate-pop rounded-full bg-black/60 px-3 py-1 text-sm text-white">{MODES[mode].icon} {MODES[mode].label}</div>
      {!host&&!tin&&<div className="absolute inset-0 z-30 grid place-items-center bg-black/50 px-6 text-center text-white"><p className="font-hand text-3xl">{tGone?'Your teacher has disconnected. Waiting for them to come back…':wait?(wait.teacher?'Your teacher will let you in in a moment…':'You are in the waiting room. Your teacher will let you in once the class starts.'):'Waiting for the teacher to start…'}</p></div>}</div></div>
 
-   {host&&<StudentDock roster={roster} hands={hands} allow={allow} send={sendRaw} waitList={waitList} collapsed={!dockOpen} setCollapsed={setDockOpen}/>}
+   {host&&<PeopleBar roster={roster} feeds={feeds} hands={hands} allow={allow} send={sendRaw} waitList={waitList} collapsed={!dockOpen} onToggle={()=>setDockOpen(o=>!o)} galleryOn={view==='gallery'} onGallery={()=>setView(v=>v==='gallery'?'board':'gallery')}/>}
    {open&&<div id="live-tools" className="tool-panel" role="dialog" aria-label={host?'Live Session Tools':'Class panel'}>
     <div className="mb-2 flex items-center gap-2"><b className="flex-1">{host?'🛠️ Live Session Tools':'💬 Class panel'}</b><button type="button" className="cb !min-h-[34px]" onClick={()=>setOpen(false)} aria-label="Close panel">✕</button></div>
     <div className="grid grid-cols-4 gap-2">
